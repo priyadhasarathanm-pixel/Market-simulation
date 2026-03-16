@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade P&L Simulator — NSE / BSE / US</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --bg2: #181c27; --bg3: #1e2334;
+    --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf0; --muted: #7b8198; --hint: #4a5068;
+    --profit: #1fc87a; --loss: #f05252; --amber: #f0a500; --blue: #3a8ef6;
+    --radius: 10px; --radius-lg: 14px;
+  }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { background: var(--bg2); border-bottom: 0.5px solid var(--border); padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .logo { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .logo span { color: var(--profit); }
+  .status-bar { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hint); display: inline-block; }
+  .dot.live { background: var(--profit); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+  main { padding: 20px 28px; max-width: 1100px; margin: 0 auto; }
+  .proxy-bar { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 10px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .proxy-bar input { flex: 1; min-width: 260px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 12px; outline: none; }
+  .proxy-bar input:focus { border-color: var(--blue); }
+  .tag { background: rgba(240,165,0,0.15); color: var(--amber); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+  .api-bar { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 16px; display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .api-bar label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .ticker-input { width: 140px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; outline: none; }
+  .ticker-input:focus { border-color: var(--blue); }
+  .market-select { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 12px; outline: none; cursor: pointer; }
+  .btn { background: var(--blue); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn.secondary { background: var(--bg3); border: 0.5px solid var(--border2); color: var(--muted); }
+  .btn.secondary:hover { color: var(--text); }
+  .fetch-msg { font-size: 12px; color: var(--muted); }
+  .quick-symbols { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .sym-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg3); color: var(--muted); transition: all 0.12s; }
+  .sym-btn:hover { color: var(--text); border-color: var(--blue); }
+  .sym-btn.india { border-color: rgba(240,165,0,0.3); color: var(--amber); }
+  .sym-btn.us { border-color: rgba(58,142,246,0.3); color: var(--blue); }
+  .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }
+  .metric { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .profit { color: var(--profit); } .loss { color: var(--loss); } .neutral { color: var(--text); } .amber { color: var(--amber); }
+  .grid-2 { display: grid; grid-template-columns: 340px 1fr; gap: 14px; }
+  .card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 18px; }
+  .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hint); font-weight: 600; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
+  .row label { font-size: 12px; color: var(--muted); min-width: 100px; }
+  input[type=range] { flex: 1; accent-color: var(--blue); cursor: pointer; }
+  select { flex: 1; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 13px; outline: none; cursor: pointer; }
+  .val { font-size: 13px; font-weight: 600; min-width: 80px; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  .divider { border: none; border-top: 0.5px solid var(--border); margin: 14px 0; }
+  .price-bar { position: relative; height: 52px; background: var(--bg3); border-radius: 6px; margin: 8px 0 4px; }
+  .price-marker { position: absolute; top: -2px; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); z-index: 10; }
+  .marker-line { width: 2px; height: 56px; border-radius: 1px; }
+  .marker-label { font-size: 9px; font-weight: 700; white-space: nowrap; padding: 2px 5px; border-radius: 3px; margin-top: 2px; }
+  .bar-minmax { display: flex; justify-content: space-between; font-size: 10px; color: var(--hint); margin-top: 2px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 20px; cursor: pointer; border: 0.5px solid var(--border2); background: transparent; color: var(--muted); transition: all 0.15s; }
+  .tab.active { background: var(--blue); color: #fff; border-color: transparent; }
+  .log-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 7px 0; border-bottom: 0.5px solid var(--border); }
+  .log-row:last-child { border-bottom: none; }
+  .log-lbl { color: var(--muted); }
+  .pnl-summary { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 14px 16px; margin-top: 12px; }
+  .pnl-big { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+  .badge-profit { background: rgba(31,200,122,0.15); color: var(--profit); }
+  .badge-loss { background: rgba(240,82,82,0.15); color: var(--loss); }
+  .badge-neutral { background: var(--bg3); color: var(--muted); }
+  .refresh-note { font-size: 11px; color: var(--hint); margin-top: 6px; }
+  footer { text-align: center; padding: 20px; font-size: 11px; color: var(--hint); border-top: 0.5px solid var(--border); margin-top: 24px; }
+  footer a { color: var(--blue); text-decoration: none; }
+  @media (max-width: 720px) {
+    main { padding: 14px; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .metrics { grid-template-columns: repeat(2,1fr); }
+    header { padding: 12px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Trade<span>P&L</span> Simulator <span style="color:var(--amber);font-size:11px;font-weight:400;margin-left:6px;">NSE · BSE · US</span></div>
+  <div class="status-bar">
+    <span class="dot" id="live-dot"></span>
+    <span id="live-label">Not connected</span>
+    <span id="last-updated"></span>
+  </div>
+</header>
+
+<main>
+
+  <div class="proxy-bar">
+    <span class="tag">STEP 1</span>
+    <span>Cloudflare Worker URL:</span>
+    <input type="text" id="proxy-url" placeholder="https://your-worker.your-name.workers.dev" autocomplete="off">
+    <span style="font-size:11px;color:var(--hint);">Deploy once, works forever. See setup instructions.</span>
+  </div>
+
+  <div class="api-bar">
+    <span class="tag">STEP 2</span>
+    <label>Market</label>
+    <select class="market-select" id="market-type" onchange="onMarketChange()">
+      <option value="india">India (NSE/BSE)</option>
+      <option value="us">US (NYSE/NASDAQ)</option>
+      <option value="index">Index</option>
+    </select>
+    <label>Symbol</label>
+    <input type="text" id="ticker" class="ticker-input" placeholder="RELIANCE.NS" value="RELIANCE.NS">
+    <button class="btn" onclick="fetchPrice()">Fetch live price</button>
+    <button class="btn secondary" onclick="autoRefresh()">Auto-refresh 30s</button>
+    <span class="fetch-msg" id="fetch-msg"></span>
+  </div>
+
+  <div class="quick-symbols" id="quick-syms"></div>
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Entry price</div><div class="metric-value neutral" id="m-entry">—</div></div>
+    <div class="metric"><div class="metric-label">Market price</div><div class="metric-value amber" id="m-market">—</div></div>
+    <div class="metric"><div class="metric-label">Exit price</div><div class="metric-value neutral" id="m-exit">—</div></div>
+    <div class="metric"><div class="metric-label">Net P&L</div><div class="metric-value" id="m-pnl">—</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="section-label">Trade setup</div>
+      <div class="row"><label>Direction</label><select id="dir"><option value="long">Long (buy)</option><option value="short">Short (sell)</option></select></div>
+      <div class="row"><label>Quantity</label><input type="range" id="qty" min="1" max="1000" step="1" value="50"><span class="val" id="qty-v">50 units</span></div>
+      <div class="row"><label>Entry price</label><input type="range" id="entry" min="1" max="5000" step="1" value="2400"><span class="val" id="entry-v">₹2,400</span></div>
+      <div class="row"><label>Market price</label><input type="range" id="market" min="1" max="5000" step="1" value="2450"><span class="val" id="market-v">₹2,450</span></div>
+      <div class="row"><label>Exit price</label><input type="range" id="exit" min="1" max="5000" step="1" value="2500"><span class="val" id="exit-v">₹2,500</span></div>
+      <div class="row"><label>Fees / trade</label><input type="range" id="fee" min="0" max="500" step="1" value="20"><span class="val" id="fee-v">₹20</span></div>
+      <hr class="divider">
+      <div class="section-label">Price map</div>
+      <div class="price-bar" id="price-bar"></div>
+      <div class="bar-minmax"><span id="bar-min"></span><span id="bar-max"></span></div>
+      <div class="refresh-note" id="auto-note"></div>
+    </div>
+
+    <div class="card" style="display:flex;flex-direction:column;">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('pnl')">P&L breakdown</button>
+        <button class="tab" onclick="switchTab('chart')">Chart</button>
+        <button class="tab" onclick="switchTab('log')">Scenario log</button>
+      </div>
+      <div id="tab-pnl">
+        <div id="breakdown"></div>
+        <div class="pnl-summary" id="pnl-summary"></div>
+        <div style="margin-top:14px;"><div class="section-label">Unrealized vs realized</div><div id="unreal"></div></div>
+      </div>
+      <div id="tab-chart" style="display:none;">
+        <div style="position:relative;height:300px;"><canvas id="pnlChart"></canvas></div>
+        <div id="chart-legend" style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--muted);flex-wrap:wrap;"></div>
+      </div>
+      <div id="tab-log" style="display:none;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="btn" onclick="addLog()">+ Save scenario</button>
+          <button class="btn secondary" onclick="clearLog()">Clear all</button>
+        </div>
+        <div id="log-container"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Live data via <a href="https://finance.yahoo.com" target="_blank">Yahoo Finance</a> &nbsp;·&nbsp;
+  Proxied via <a href="https://workers.cloudflare.com" target="_blank">Cloudflare Workers</a> &nbsp;·&nbsp;
+  For educational use only &nbsp;·&nbsp; Not financial advice
+</footer>
+
+<script>
+let chartInstance = null, logEntries = [], activeTab = 'pnl', autoRefreshTimer = null, currency = '₹';
+
+const SYMBOLS = {
+  india: [
+    {label:'NIFTY 50',sym:'^NSEI'},{label:'SENSEX',sym:'^BSESN'},
+    {label:'RELIANCE',sym:'RELIANCE.NS'},{label:'TCS',sym:'TCS.NS'},
+    {label:'INFY',sym:'INFY.NS'},{label:'HDFCBANK',sym:'HDFCBANK.NS'},
+    {label:'ICICIBANK',sym:'ICICIBANK.NS'},{label:'WIPRO',sym:'WIPRO.NS'},
+    {label:'NIFTYBANK',sym:'^NSEBANK'}
+  ],
+  us: [
+    {label:'AAPL',sym:'AAPL'},{label:'TSLA',sym:'TSLA'},
+    {label:'NVDA',sym:'NVDA'},{label:'MSFT',sym:'MSFT'},{label:'GOOGL',sym:'GOOGL'}
+  ],
+  index: [
+    {label:'NIFTY 50',sym:'^NSEI'},{label:'SENSEX',sym:'^BSESN'},
+    {label:'S&P 500',sym:'^GSPC'},{label:'NASDAQ',sym:'^IXIC'},{label:'DOW',sym:'^DJI'}
+  ]
+};
+
+const $ = id => document.getElementById(id);
+
+function fmt(n) { return currency + Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtSigned(n) { return (n>=0?'+':'-')+currency+Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtPct(n) { return (n>=0?'+':'')+n.toFixed(2)+'%'; }
+
+function onMarketChange() {
+  const m = $('market-type').value;
+  currency = m==='us' ? '$' : '₹';
+  renderQuickSyms(m);
+  $('ticker').value = {india:'RELIANCE.NS',us:'AAPL',index:'^NSEI'}[m];
+  update();
+}
+
+function renderQuickSyms(market) {
+  const cls = market==='us'?'us':'india';
+  $('quick-syms').innerHTML = (SYMBOLS[market]||[]).map(s=>
+    `<button class="sym-btn ${cls}" onclick="pickSym('${s.sym}')">${s.label}</button>`
+  ).join('');
+}
+
+function pickSym(sym) { $('ticker').value=sym; fetchPrice(); }
+
+async function fetchPrice() {
+  const proxyBase = $('proxy-url').value.trim().replace(/\/$/,'');
+  const sym = $('ticker').value.trim().toUpperCase();
+  const msg = $('fetch-msg');
+  if (!proxyBase) { msg.textContent='Paste your Cloudflare Worker URL first (Step 1).'; msg.style.color='var(--amber)'; return; }
+  if (!sym) { msg.textContent='Enter a symbol.'; msg.style.color='var(--amber)'; return; }
+  msg.textContent='Fetching…'; msg.style.color='var(--muted)';
+  try {
+    const res = await fetch(`${proxyBase}/?symbol=${encodeURIComponent(sym)}`);
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    if (data.price) {
+      applyLivePrice(parseFloat(data.price), sym, data.name||sym);
+      msg.textContent=`${data.name||sym} · ${fmt(data.price)}`;
+      msg.style.color='var(--profit)';
+    } else {
+      msg.textContent=data.error||'Symbol not found.';
+      msg.style.color='var(--loss)';
+    }
+  } catch(e) {
+    msg.textContent='Could not reach worker — check URL.';
+    msg.style.color='var(--loss)';
+  }
+}
+
+function applyLivePrice(price, sym, name) {
+  const maxP = Math.ceil(price*1.6/100)*100||5000;
+  const step = price>1000?1:price>100?0.5:0.05;
+  ['entry','market','exit'].forEach(id=>{ $(id).max=maxP; $(id).step=step; });
+  $('market').value=price;
+  if (parseFloat($('entry').value)>=price) $('entry').value=(price*0.96).toFixed(2);
+  if (parseFloat($('exit').value)<=price) $('exit').value=(price*1.04).toFixed(2);
+  $('live-dot').classList.add('live');
+  $('live-label').textContent=sym+' · '+name;
+  $('last-updated').textContent=new Date().toLocaleTimeString('en-IN');
+  update();
+}
+
+function autoRefresh() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer=null; $('auto-note').textContent=''; return; }
+  fetchPrice();
+  autoRefreshTimer=setInterval(fetchPrice,30000);
+  $('auto-note').textContent='Auto-refreshing every 30s. Click again to stop.';
+}
+
+function getVals() {
+  return { dir:$('dir').value, qty:parseFloat($('qty').value), entry:parseFloat($('entry').value), market:parseFloat($('market').value), exit:parseFloat($('exit').value), fee:parseFloat($('fee').value) };
+}
+
+function calcPnl(v) {
+  const sign=v.dir==='long'?1:-1;
+  const unrealized=sign*(v.market-v.entry)*v.qty;
+  const grossPnl=sign*(v.exit-v.entry)*v.qty;
+  const totalFees=v.fee*2;
+  const realized=grossPnl-totalFees;
+  const vsMarket=sign*(v.exit-v.market)*v.qty;
+  const entryValue=v.entry*v.qty, exitValue=v.exit*v.qty;
+  const unrealizedPct=entryValue?(unrealized/entryValue)*100:0;
+  const realizedPct=entryValue?(realized/entryValue)*100:0;
+  const breakEven=v.dir==='long'?v.entry+totalFees/v.qty:v.entry-totalFees/v.qty;
+  return {unrealized,grossPnl,totalFees,realized,vsMarket,entryValue,exitValue,unrealizedPct,realizedPct,breakEven};
+}
+
+function colorClass(n) { return n>0?'profit':n<0?'loss':'neutral'; }
+function badgeClass(n) { return n>0?'badge-profit':n<0?'badge-loss':'badge-neutral'; }
+
+function update() {
+  const v=getVals(), p=calcPnl(v);
+  $('qty-v').textContent=v.qty+' units';
+  $('entry-v').textContent=fmt(v.entry); $('market-v').textContent=fmt(v.market);
+  $('exit-v').textContent=fmt(v.exit); $('fee-v').textContent=fmt(v.fee);
+  $('m-entry').textContent=fmt(v.entry); $('m-market').textContent=fmt(v.market); $('m-exit').textContent=fmt(v.exit);
+  const pnlEl=$('m-pnl'); pnlEl.textContent=fmtSigned(p.realized); pnlEl.className='metric-value '+colorClass(p.realized);
+  renderBreakdown(v,p); renderPriceBar(v,p);
+  if (activeTab==='chart') renderChart(v,p);
+}
+
+function renderBreakdown(v,p) {
+  const rows=[['Entry value',fmt(p.entryValue),'neutral'],['Exit value',fmt(p.exitValue),'neutral'],['Gross P&L',fmtSigned(p.grossPnl),colorClass(p.grossPnl)],['Total fees (×2)','−'+fmt(p.totalFees),'loss'],['Net realized P&L',fmtSigned(p.realized),colorClass(p.realized)],['Break-even price',fmt(p.breakEven),'amber']];
+  $('breakdown').innerHTML=rows.map(([l,v2,c])=>`<div class="log-row"><span class="log-lbl">${l}</span><span class="${c}" style="font-weight:600">${v2}</span></div>`).join('');
+  $('pnl-summary').innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Net realized P&L</div><div class="pnl-big ${colorClass(p.realized)}">${fmtSigned(p.realized)}<span class="badge ${badgeClass(p.realized)}">${fmtPct(p.realizedPct)}</span></div>`;
+  $('unreal').innerHTML=`<div class="log-row"><span class="log-lbl">Unrealized (vs market)</span><span class="${colorClass(p.unrealized)}" style="font-weight:600">${fmtSigned(p.unrealized)} <small>${fmtPct(p.unrealizedPct)}</small></span></div><div class="log-row"><span class="log-lbl">Exit vs market</span><span class="${colorClass(p.vsMarket)}" style="font-weight:600">${fmtSigned(p.vsMarket)}</span></div>`;
+}
+
+function renderPriceBar(v,p) {
+  const prices=[v.entry,v.market,v.exit,p.breakEven];
+  const lo=Math.min(...prices)*0.96, hi=Math.max(...prices)*1.04, range=hi-lo;
+  const pct=x=>((x-lo)/range*100).toFixed(1);
+  const markers=[{price:v.entry,label:'Entry',color:'#3a8ef6',bg:'rgba(58,142,246,0.2)',tc:'#3a8ef6'},{price:v.market,label:'Market',color:'#f0a500',bg:'rgba(240,165,0,0.2)',tc:'#f0a500'},{price:v.exit,label:'Exit',color:'#1fc87a',bg:'rgba(31,200,122,0.2)',tc:'#1fc87a'},{price:p.breakEven,label:'B/E',color:'#7b8198',bg:'rgba(123,129,152,0.15)',tc:'#7b8198'}];
+  $('bar-min').textContent=fmt(lo); $('bar-max').textContent=fmt(hi);
+  $('price-bar').innerHTML=markers.map(m=>`<div class="price-marker" style="left:${pct(m.price)}%"><div class="marker-line" style="background:${m.color};opacity:0.7"></div><div class="marker-label" style="background:${m.bg};color:${m.tc};">${m.label}<br><span style="font-size:9px;">${fmt(m.price)}</span></div></div>`).join('');
+}
+
+function renderChart(v,p) {
+  if (!p) p=calcPnl(v);
+  const lo=v.entry*0.75, hi=v.entry*1.45, steps=40;
+  const labels=[], profits=[];
+  for (let i=0;i<=steps;i++) { const ep=lo+(hi-lo)*i/steps; labels.push(currency+ep.toFixed(0)); const sign=v.dir==='long'?1:-1; profits.push(parseFloat((sign*(ep-v.entry)*v.qty-v.fee*2).toFixed(2))); }
+  const colors=profits.map(x=>x>=0?'rgba(31,200,122,0.75)':'rgba(240,82,82,0.75)');
+  if (chartInstance) chartInstance.destroy();
+  chartInstance=new Chart($('pnlChart'),{type:'bar',data:{labels,datasets:[{label:'P&L',data:profits,backgroundColor:colors,borderRadius:2},{type:'line',label:'Break-even',data:labels.map(()=>0),borderColor:'#4a5068',borderWidth:1,borderDash:[4,3],pointRadius:0,tension:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.datasetIndex===0?fmtSigned(ctx.raw):null}}},scales:{x:{ticks:{maxTicksLimit:8,font:{size:10},color:'#4a5068',autoSkip:true},grid:{display:false}},y:{ticks:{font:{size:10},color:'#4a5068',callback:v2=>(v2>=0?'+':'')+currency+v2.toFixed(0)},grid:{color:'rgba(74,80,104,0.2)'}}}}});
+  $('chart-legend').innerHTML=`<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#1fc87a;opacity:.75;"></span>Profit</span><span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#f05252;opacity:.75;"></span>Loss</span><span style="color:var(--hint);">Current exit: ${fmt(v.exit)}</span>`;
+}
+
+function switchTab(tab) {
+  activeTab=tab;
+  ['pnl','chart','log'].forEach(t=>$('tab-'+t).style.display=t===tab?'block':'none');
+  document.querySelectorAll('.tabs .tab').forEach((btn,i)=>btn.classList.toggle('active',['pnl','chart','log'][i]===tab));
+  if (tab==='chart') renderChart(getVals());
+}
+
+function addLog() {
+  const v=getVals(), p=calcPnl(v), sym=$('ticker').value.trim().toUpperCase()||'—';
+  logEntries.unshift({label:`${sym} ${v.dir.toUpperCase()} ${v.qty}u @ ${fmt(v.entry)} → ${fmt(v.exit)}`,pnl:p.realized,pct:p.realizedPct,time:new Date().toLocaleTimeString('en-IN')});
+  renderLog();
+}
+function clearLog() { logEntries=[]; renderLog(); }
+function renderLog() {
+  const c=$('log-container');
+  if (!logEntries.length) { c.innerHTML=`<div style="font-size:12px;color:var(--hint);padding:12px 0;">No scenarios saved yet.</div>`; return; }
+  c.innerHTML=logEntries.map(e=>`<div class="log-row"><div><div style="color:var(--muted);font-size:11px;">${e.label}</div><div style="font-size:10px;color:var(--hint);">${e.time}</div></div><span class="${colorClass(e.pnl)}" style="font-weight:700;font-size:13px;">${fmtSigned(e.pnl)} <small style="font-size:10px;">${fmtPct(e.pct)}</small></span></div>`).join('');
+}
+
+['dir','qty','entry','market','exit','fee'].forEach(id=>$(id).addEventListener('input',update));
+$('ticker').addEventListener('keydown',e=>{ if(e.key==='Enter') fetchPrice(); });
+
+renderQuickSyms('india');
+renderLog();
+update();
+</script>
+</body>
+</html>
