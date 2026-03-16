@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Futures & Options Portfolio Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0d13; --bg2: #111520; --bg3: #181d2e; --bg4: #1e2440;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+  --text: #dde2f0; --muted: #6b7490; --hint: #3d4460;
+  --profit: #00d68f; --loss: #ff4d6d; --amber: #ffb800; --blue: #4a9eff;
+  --purple: #9b6dff; --orange: #ff7c3e; --teal: #00c9b1; --pink: #ff6eb4;
+  --radius: 10px; --radius-lg: 14px;
+}
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+header { background: var(--bg2); border-bottom: 0.5px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.logo { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.logo .f { color: var(--amber); } .logo .o { color: var(--purple); }
+.hdr-right { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.live-chip { display: flex; align-items: center; gap: 5px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 20px; padding: 3px 10px; font-size: 11px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--hint); flex-shrink: 0; }
+.dot.live { background: var(--profit); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
+
+/* summary bar */
+.summary-bar { background: var(--bg2); border-bottom: 0.5px solid var(--border); padding: 8px 24px; display: flex; gap: 0; overflow-x: auto; }
+.sb { padding: 4px 18px; border-right: 0.5px solid var(--border2); min-width: 100px; flex-shrink: 0; }
+.sb:first-child { padding-left: 0; } .sb:last-child { border-right: none; }
+.sb-l { font-size: 10px; color: var(--hint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+.sb-v { font-size: 15px; font-weight: 700; }
+.profit{color:var(--profit)} .loss{color:var(--loss)} .neutral{color:var(--text)} .amber{color:var(--amber)} .blue{color:var(--blue)} .purple{color:var(--purple)}
+
+main { padding: 14px 24px; max-width: 1240px; margin: 0 auto; }
+
+/* fetch bar */
+.fetch-bar { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.fetch-bar input { flex: 1; min-width: 200px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px; outline: none; }
+.fetch-bar input:focus { border-color: var(--blue); }
+.tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+.tag-a { background: rgba(255,184,0,0.15); color: var(--amber); }
+.tag-p { background: rgba(155,109,255,0.15); color: var(--purple); }
+.fetch-bar label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fm { font-size: 11px; color: var(--muted); }
+
+.btn { border: none; border-radius: 6px; padding: 6px 13px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
+.btn:hover { opacity: 0.82; }
+.bb { background: var(--blue); color: #fff; }
+.bs { background: var(--bg3); border: 0.5px solid var(--border2); color: var(--muted); }
+.bs:hover { color: var(--text); }
+.bg { background: rgba(0,214,143,0.12); border: 0.5px solid rgba(0,214,143,0.28); color: var(--profit); }
+.bp { background: rgba(155,109,255,0.12); border: 0.5px solid rgba(155,109,255,0.28); color: var(--purple); }
+.br { background: rgba(255,77,109,0.1); border: 0.5px solid rgba(255,77,109,0.22); color: var(--loss); font-size: 11px; padding: 4px 8px; }
+
+/* add bar */
+.add-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.isel { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 9px; color: var(--text); font-size: 12px; font-weight: 600; outline: none; cursor: pointer; }
+
+/* layout */
+.layout { display: grid; grid-template-columns: 1fr 370px; gap: 14px; align-items: start; }
+
+/* trade card */
+.tc { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 10px; }
+.tc.fut-long { border-left: 3px solid var(--profit); }
+.tc.fut-short { border-left: 3px solid var(--loss); }
+.tc.opt-ce-buy { border-left: 3px solid var(--blue); }
+.tc.opt-ce-sell { border-left: 3px solid var(--orange); }
+.tc.opt-pe-buy { border-left: 3px solid var(--purple); }
+.tc.opt-pe-sell { border-left: 3px solid var(--pink); }
+
+.tc-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; flex-wrap: wrap; gap: 6px; }
+.tc-left { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.tc-name { font-size: 13px; font-weight: 700; }
+.badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; }
+.b-long { background: rgba(0,214,143,0.15); color: var(--profit); }
+.b-short { background: rgba(255,77,109,0.15); color: var(--loss); }
+.b-buy { background: rgba(74,158,255,0.15); color: var(--blue); }
+.b-sell { background: rgba(255,126,62,0.15); color: var(--orange); }
+.b-ce { background: rgba(74,158,255,0.12); color: var(--blue); }
+.b-pe { background: rgba(155,109,255,0.12); color: var(--purple); }
+.b-fut { background: rgba(255,184,0,0.12); color: var(--amber); }
+.tc-sub { font-size: 10px; color: var(--muted); }
+.tc-pnl { font-size: 17px; font-weight: 700; }
+.tc-roi { font-size: 10px; color: var(--muted); text-align: right; }
+
+.tc-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 10px; }
+.tc-grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 10px; }
+.tf { display: flex; flex-direction: column; gap: 3px; }
+.tf label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tf input, .tf select { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 12px; font-weight: 600; outline: none; width: 100%; }
+.tf input:focus, .tf select:focus { border-color: var(--blue); }
+
+.tc-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; background: var(--bg3); border-radius: 6px; padding: 8px; margin-bottom: 8px; font-size: 11px; }
+.tc-stat-item .st-l { color: var(--hint); font-size: 10px; } .tc-stat-item .st-v { font-weight: 600; }
+
+/* greeks box */
+.greeks-box { display: grid; grid-template-columns: repeat(5,1fr); gap: 4px; background: rgba(155,109,255,0.07); border: 0.5px solid rgba(155,109,255,0.2); border-radius: 6px; padding: 8px; font-size: 11px; }
+.g-item .g-l { color: var(--hint); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; } 
+.g-item .g-v { font-weight: 700; color: var(--purple); }
+
+.flp { font-size: 10px; padding: 3px 7px; border-radius: 4px; background: rgba(74,158,255,0.1); border: 0.5px solid rgba(74,158,255,0.2); color: var(--blue); cursor: pointer; font-weight: 600; }
+.flp:hover { opacity: 0.8; }
+
+/* right panel */
+.rp { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.sec-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hint); font-weight: 600; margin-bottom: 10px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.tab { font-size: 10px; font-weight: 600; padding: 4px 9px; border-radius: 20px; cursor: pointer; border: 0.5px solid var(--border2); background: transparent; color: var(--muted); transition: all 0.15s; }
+.tab.active { background: var(--blue); color: #fff; border-color: transparent; }
+.pr { display: flex; justify-content: space-between; font-size: 11px; padding: 5px 0; border-bottom: 0.5px solid var(--border); }
+.pr:last-child { border-bottom: none; }
+
+.empty { background: var(--bg2); border: 0.5px dashed var(--border2); border-radius: var(--radius-lg); padding: 36px; text-align: center; color: var(--hint); }
+
+footer { text-align: center; padding: 16px; font-size: 11px; color: var(--hint); border-top: 0.5px solid var(--border); margin-top: 18px; }
+footer a { color: var(--blue); text-decoration: none; }
+
+@media (max-width: 920px) {
+  .layout { grid-template-columns: 1fr; }
+  main { padding: 10px; }
+  .tc-grid, .tc-grid-4 { grid-template-columns: repeat(2,1fr); }
+  .greeks-box { grid-template-columns: repeat(3,1fr); }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="f">F&amp;O</span> <span class="o">PORTFOLIO</span> <span style="color:var(--muted);font-weight:400;font-size:12px;">Futures &amp; Options Simulator</span></div>
+  <div class="hdr-right">
+    <div class="live-chip"><span class="dot" id="live-dot"></span><span id="live-label">Not connected</span></div>
+    <span id="last-updated" style="color:var(--hint);font-size:11px;"></span>
+  </div>
+</header>
+
+<div class="summary-bar">
+  <div class="sb"><div class="sb-l">Total P&L</div><div class="sb-v" id="sb-pnl">₹0</div></div>
+  <div class="sb"><div class="sb-l">Futures P&L</div><div class="sb-v" id="sb-fut">₹0</div></div>
+  <div class="sb"><div class="sb-l">Options P&L</div><div class="sb-v" id="sb-opt">₹0</div></div>
+  <div class="sb"><div class="sb-l">Net Delta</div><div class="sb-v" id="sb-delta">0</div></div>
+  <div class="sb"><div class="sb-l">Net Theta/day</div><div class="sb-v" id="sb-theta">₹0</div></div>
+  <div class="sb"><div class="sb-l">Total Margin</div><div class="sb-v neutral" id="sb-margin">₹0</div></div>
+  <div class="sb"><div class="sb-l">Positions</div><div class="sb-v neutral" id="sb-count">0</div></div>
+</div>
+
+<main>
+
+  <div class="fetch-bar">
+    <span class="tag tag-a">LIVE</span>
+    <label>Worker URL</label>
+    <input type="text" id="proxy-url" placeholder="https://lively-snowflake-05cc.priyadhasarathanm.workers.dev" autocomplete="off">
+    <button class="btn bb" onclick="fetchAllPrices()">Refresh all</button>
+    <button class="btn bs" onclick="autoRefresh()" id="auto-btn">Auto 30s</button>
+    <span class="fm" id="fetch-msg"></span>
+  </div>
+
+  <div class="add-bar">
+    <select class="isel" id="new-type" onchange="onTypeChange()">
+      <optgroup label="── Futures ──">
+        <option value="FUT_NIFTY">NIFTY Futures (lot 65)</option>
+        <option value="FUT_BANKNIFTY">BANK NIFTY Futures (lot 30)</option>
+        <option value="FUT_FINNIFTY">FIN NIFTY Futures (lot 65)</option>
+        <option value="FUT_SENSEX">SENSEX Futures (lot 10)</option>
+        <option value="FUT_RELIANCE">RELIANCE Futures (lot 250)</option>
+        <option value="FUT_TCS">TCS Futures (lot 150)</option>
+        <option value="FUT_HDFCBANK">HDFC BANK Futures (lot 550)</option>
+        <option value="FUT_SBIN">SBI Futures (lot 3000)</option>
+      </optgroup>
+      <optgroup label="── Options ──">
+        <option value="OPT_NIFTY_CE">NIFTY Call (CE)</option>
+        <option value="OPT_NIFTY_PE">NIFTY Put (PE)</option>
+        <option value="OPT_BANKNIFTY_CE">BANK NIFTY Call (CE)</option>
+        <option value="OPT_BANKNIFTY_PE">BANK NIFTY Put (PE)</option>
+        <option value="OPT_FINNIFTY_CE">FIN NIFTY Call (CE)</option>
+        <option value="OPT_FINNIFTY_PE">FIN NIFTY Put (PE)</option>
+        <option value="OPT_SENSEX_CE">SENSEX Call (CE)</option>
+        <option value="OPT_SENSEX_PE">SENSEX Put (PE)</option>
+        <option value="OPT_STOCK_CE">Stock Call (CE)</option>
+        <option value="OPT_STOCK_PE">Stock Put (PE)</option>
+      </optgroup>
+    </select>
+    <select class="isel" id="new-dir" style="width:120px;">
+      <option value="buy">Buy (Long)</option>
+      <option value="sell">Sell (Short)</option>
+    </select>
+    <button class="btn bg" onclick="addPosition()">+ Add Futures</button>
+    <button class="btn bp" onclick="addPosition()" id="add-opt-btn" style="display:none;">+ Add Option</button>
+    <button class="btn bs" onclick="clearAll()">Clear all</button>
+  </div>
+
+  <div class="layout">
+    <div id="positions-container">
+      <div class="empty" id="empty-state">
+        <div style="font-size:26px;margin-bottom:8px;">📈</div>
+        <div style="font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px;">No positions yet</div>
+        <div style="font-size:12px;">Add futures or options above to start simulating</div>
+      </div>
+    </div>
+
+    <div class="rp">
+      <div class="card">
+        <div class="sec-l">Portfolio summary</div>
+        <div id="port-breakdown"></div>
+        <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;margin-top:10px;">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">Net P&L</div>
+          <div style="font-size:28px;font-weight:700;" id="hero-pnl">₹0.00</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="hero-sub">Add positions to simulate</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('payoff')">Payoff</button>
+          <button class="tab" onclick="switchTab('greeks')">Greeks</button>
+          <button class="tab" onclick="switchTab('scenarios')">Scenarios</button>
+          <button class="tab" onclick="switchTab('breakdown')">Breakdown</button>
+        </div>
+        <div id="rtab-payoff">
+          <div style="position:relative;height:230px;"><canvas id="payoffChart"></canvas></div>
+          <div id="chart-legend" style="display:flex;gap:8px;margin-top:8px;font-size:10px;color:var(--muted);flex-wrap:wrap;"></div>
+        </div>
+        <div id="rtab-greeks" style="display:none;"><div id="greeks-summary"></div></div>
+        <div id="rtab-scenarios" style="display:none;"><div id="scenarios-content"></div></div>
+        <div id="rtab-breakdown" style="display:none;"><div id="breakdown-content"></div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  NSE F&amp;O Simulator · Black-Scholes pricing · For educational use only · Not financial advice &nbsp;·&nbsp;
+  Live data via <a href="https://finance.yahoo.com" target="_blank">Yahoo Finance</a> + <a href="https://workers.cloudflare.com" target="_blank">Cloudflare Workers</a>
+</footer>
+
+<script>
+// ── Instrument catalogue ──────────────────────────────────────
+const INST = {
+  NIFTY:      { name:'NIFTY 50',    lot:65,  sym:'^NSEI',        margin:95000,  dp:22500 },
+  BANKNIFTY:  { name:'BANK NIFTY',  lot:30,  sym:'^NSEBANK',     margin:55000,  dp:48000 },
+  FINNIFTY:   { name:'FIN NIFTY',   lot:65,  sym:'NIFTY_FIN_SERVICE.NS', margin:45000, dp:21000 },
+  SENSEX:     { name:'SENSEX',      lot:10,  sym:'^BSESN',       margin:120000, dp:74000 },
+  RELIANCE:   { name:'RELIANCE',    lot:250, sym:'RELIANCE.NS',  margin:85000,  dp:1380 },
+  TCS:        { name:'TCS',         lot:150, sym:'TCS.NS',       margin:60000,  dp:3900 },
+  HDFCBANK:   { name:'HDFC BANK',   lot:550, sym:'HDFCBANK.NS',  margin:90000,  dp:1680 },
+  SBIN:       { name:'SBI',         lot:3000,sym:'SBIN.NS',      margin:70000,  dp:780  },
+  STOCK:      { name:'Custom Stock',lot:100, sym:null,           margin:50000,  dp:1000 },
+};
+
+// ── Black-Scholes ─────────────────────────────────────────────
+function normCDF(x) {
+  const t = 1/(1+0.2316419*Math.abs(x));
+  const d = 0.3989423*Math.exp(-x*x/2);
+  const p = d*t*(0.3193815+t*(-0.3565638+t*(1.7814779+t*(-1.8212560+t*1.3302744))));
+  return x >= 0 ? 1-p : p;
+}
+function normPDF(x) { return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI); }
+
+function bs(S, K, T, r, v, type) {
+  if (T <= 0) {
+    const intrinsic = type==='CE' ? Math.max(0,S-K) : Math.max(0,K-S);
+    return { price:intrinsic, delta:type==='CE'?(S>K?1:0):(S<K?-1:0), gamma:0, theta:0, vega:0, iv:v };
+  }
+  const d1 = (Math.log(S/K)+(r+0.5*v*v)*T)/(v*Math.sqrt(T));
+  const d2 = d1 - v*Math.sqrt(T);
+  let price, delta;
+  if (type==='CE') {
+    price = S*normCDF(d1) - K*Math.exp(-r*T)*normCDF(d2);
+    delta = normCDF(d1);
+  } else {
+    price = K*Math.exp(-r*T)*normCDF(-d2) - S*normCDF(-d1);
+    delta = normCDF(d1)-1;
+  }
+  const gamma = normPDF(d1)/(S*v*Math.sqrt(T));
+  const theta = (-(S*normPDF(d1)*v)/(2*Math.sqrt(T)) - r*K*Math.exp(-r*T)*(type==='CE'?normCDF(d2):normCDF(-d2)))/365;
+  const vega  = S*normPDF(d1)*Math.sqrt(T)/100;
+  return { price: Math.max(0,price), delta, gamma, theta, vega, iv:v };
+}
+
+// ── State ─────────────────────────────────────────────────────
+let positions = [], pidx = 0, chartInst = null, autoTimer = null, activeTab = 'payoff';
+const COLORS = ['#4a9eff','#00d68f','#ffb800','#ff7c3e','#9b6dff','#00c9b1','#ff4d6d','#ff6eb4','#e8c96a','#7dd4fc'];
+const $ = id => document.getElementById(id);
+
+function onTypeChange() {
+  const t = $('new-type').value;
+  const isOpt = t.startsWith('OPT');
+  $('add-opt-btn').style.display = isOpt ? '' : 'none';
+  document.querySelector('.btn.bg').style.display = isOpt ? 'none' : '';
+}
+
+// ── Add position ──────────────────────────────────────────────
+function addPosition() {
+  const typeKey = $('new-type').value;
+  const dir = $('new-dir').value;
+  const id = ++pidx;
+
+  if (typeKey.startsWith('FUT_')) {
+    const key = typeKey.replace('FUT_','');
+    const inst = INST[key] || INST.STOCK;
+    positions.push({
+      id, kind:'FUT', key, dir,
+      lots:1, entry:inst.dp, market:inst.dp,
+      exit: dir==='buy' ? inst.dp*1.015 : inst.dp*0.985,
+      brokerage:40, livePrice:null
+    });
+  } else {
+    // OPT_NIFTY_CE etc
+    const parts = typeKey.split('_');
+    const optType = parts[parts.length-1]; // CE or PE
+    const instKey = parts.slice(1,-1).join('') || 'NIFTY';
+    const inst = INST[instKey] || INST.NIFTY;
+    const sp = inst.dp;
+    const strike = Math.round(sp/100)*100; // ATM strike
+    positions.push({
+      id, kind:'OPT', key:instKey, optType, dir,
+      lots:1, strike,
+      spot: sp, premium: 0, exitPremium: 0,
+      iv: 15, dte: 7, r: 6.5,
+      brokerage:20, livePrice:null,
+      customName: instKey==='STOCK' ? 'RELIANCE' : null,
+    });
+    // Auto-calc BS price
+    calcAndSetPremium(positions[positions.length-1]);
+  }
+  renderAll();
+}
+
+function calcAndSetPremium(p) {
+  const inst = INST[p.key] || INST.NIFTY;
+  const T = p.dte/365;
+  const res = bs(p.spot, p.strike, T, p.r/100, p.iv/100, p.optType);
+  p.premium = parseFloat(res.price.toFixed(2));
+  p.exitPremium = parseFloat((res.price * 1.3).toFixed(2));
+}
+
+function removePos(id) { positions = positions.filter(p => p.id !== id); renderAll(); }
+function clearAll() { positions = []; renderAll(); }
+
+function updatePos(id, field, val) {
+  const p = positions.find(p => p.id === id);
+  if (!p) return;
+  p[field] = isNaN(parseFloat(val)) ? val : parseFloat(val);
+  if (p.kind === 'OPT' && ['spot','strike','iv','dte','r'].includes(field)) {
+    calcAndSetPremium(p);
+  }
+  renderAll();
+}
+
+// ── Calc ──────────────────────────────────────────────────────
+function calcFut(p) {
+  const inst = INST[p.key] || INST.STOCK;
+  const sign = p.dir==='buy' ? 1 : -1;
+  const qty = p.lots * inst.lot;
+  const charges = p.brokerage * p.lots * 2 + 0.000125 * p.exit * qty;
+  const ptGain = sign * (p.exit - p.entry);
+  const gross = ptGain * qty;
+  const net = gross - charges;
+  const unreal = sign * (p.market - p.entry) * qty;
+  const margin = inst.margin * p.lots;
+  const roi = margin ? net/margin*100 : 0;
+  const be = p.entry + sign * charges / qty;
+  return { qty, ptGain, gross, charges, net, unreal, margin, roi, be, delta: sign*qty, gamma:0, theta:0, vega:0 };
+}
+
+function calcOpt(p) {
+  const inst = INST[p.key] || INST.NIFTY;
+  const sign = p.dir==='buy' ? 1 : -1;
+  const qty = p.lots * inst.lot;
+  const T = p.dte/365;
+  const greeks = bs(p.spot, p.strike, T, p.r/100, p.iv/100, p.optType);
+  const entryPremium = p.premium;
+  const exitPrem = p.exitPremium;
+  const gross = sign * (exitPrem - entryPremium) * qty;
+  const charges = p.brokerage * p.lots * 2;
+  const net = gross - charges;
+  const margin = p.dir==='sell' ? inst.margin*p.lots*0.5 : entryPremium*qty;
+  const roi = margin ? net/margin*100 : 0;
+  const deltaPos = sign * greeks.delta * qty;
+  const gammaPos = sign * greeks.gamma * qty;
+  const thetaPos = sign * greeks.theta * qty;
+  const vegaPos  = sign * greeks.vega  * qty;
+  const intrinsic = p.optType==='CE' ? Math.max(0,p.spot-p.strike) : Math.max(0,p.strike-p.spot);
+  const tv = Math.max(0, greeks.price - intrinsic);
+  return { qty, gross, charges, net, margin, roi, delta:deltaPos, gamma:gammaPos, theta:thetaPos, vega:vegaPos, greeks, intrinsic, tv, entryPremium, exitPrem };
+}
+
+function calcPos(p) { return p.kind==='FUT' ? calcFut(p) : calcOpt(p); }
+
+// ── Render ────────────────────────────────────────────────────
+function renderAll() {
+  renderPositions();
+  renderSummary();
+  if (activeTab==='payoff') renderPayoff();
+  if (activeTab==='greeks') renderGreeks();
+  if (activeTab==='scenarios') renderScenarios();
+  if (activeTab==='breakdown') renderBreakdown();
+}
+
+function renderPositions() {
+  const c = $('positions-container');
+  if (!positions.length) {
+    c.innerHTML = `<div class="empty" id="empty-state"><div style="font-size:26px;margin-bottom:8px;">📈</div><div style="font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px;">No positions yet</div><div style="font-size:12px;">Add futures or options above</div></div>`;
+    return;
+  }
+  c.innerHTML = positions.map((p,i) => {
+    const inst = INST[p.key] || INST.NIFTY;
+    const color = COLORS[i % COLORS.length];
+    if (p.kind==='FUT') return renderFutCard(p, inst, color);
+    return renderOptCard(p, inst, color);
+  }).join('');
+}
+
+function renderFutCard(p, inst, color) {
+  const r = calcFut(p);
+  const isBuy = p.dir==='buy';
+  const cls = isBuy ? 'fut-long' : 'fut-short';
+  return `<div class="tc ${cls}">
+    <div class="tc-hdr">
+      <div class="tc-left">
+        <span style="width:9px;height:9px;border-radius:50%;background:${color};display:inline-block;"></span>
+        <span class="tc-name">${inst.name}</span>
+        <span class="badge b-fut">FUT</span>
+        <span class="badge ${isBuy?'b-long':'b-short'}">${isBuy?'BUY':'SELL'}</span>
+        <span class="tc-sub">${p.lots}L · ${r.qty} units</span>
+        ${inst.sym ? `<button class="flp" onclick="fetchSingle(${p.id})">↻ Live</button>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div><div class="tc-pnl ${r.net>0?'profit':r.net<0?'loss':'neutral'}">${fmtS(r.net)}</div><div class="tc-roi">${fmtPct(r.roi)} on margin</div></div>
+        <button class="btn br" onclick="removePos(${p.id})">✕</button>
+      </div>
+    </div>
+    <div class="tc-grid">
+      <div class="tf"><label>Lots</label><input type="number" min="1" max="200" value="${p.lots}" onchange="updatePos(${p.id},'lots',this.value)"></div>
+      <div class="tf"><label>Direction</label><select onchange="updatePos(${p.id},'dir',this.value)"><option value="buy" ${p.dir==='buy'?'selected':''}>Buy (Long)</option><option value="sell" ${p.dir==='sell'?'selected':''}>Sell (Short)</option></select></div>
+      <div class="tf"><label>Brokerage/lot</label><input type="number" min="0" value="${p.brokerage}" onchange="updatePos(${p.id},'brokerage',this.value)"></div>
+      <div class="tf"><label>Entry ₹</label><input type="number" value="${p.entry}" onchange="updatePos(${p.id},'entry',this.value)" step="5"></div>
+      <div class="tf"><label>Market ₹ ${p.livePrice?'🟢':''}</label><input type="number" value="${p.market}" onchange="updatePos(${p.id},'market',this.value)" step="5"></div>
+      <div class="tf"><label>Exit/Target ₹</label><input type="number" value="${p.exit}" onchange="updatePos(${p.id},'exit',this.value)" step="5"></div>
+    </div>
+    <div class="tc-stats">
+      <div class="tc-stat-item"><div class="st-l">Points</div><div class="st-v ${r.ptGain>0?'profit':r.ptGain<0?'loss':'neutral'}">${r.ptGain>=0?'+':''}${r.ptGain.toFixed(1)}</div></div>
+      <div class="tc-stat-item"><div class="st-l">Gross P&L</div><div class="st-v ${r.gross>0?'profit':r.gross<0?'loss':'neutral'}">${fmtS(r.gross)}</div></div>
+      <div class="tc-stat-item"><div class="st-l">Charges</div><div class="st-v loss">−${fmtINR(r.charges)}</div></div>
+      <div class="tc-stat-item"><div class="st-l">Break-even</div><div class="st-v amber">${fmtINR(r.be)}</div></div>
+    </div>
+  </div>`;
+}
+
+function renderOptCard(p, inst, color) {
+  const r = calcOpt(p);
+  const isCE = p.optType==='CE';
+  const isBuy = p.dir==='buy';
+  const cls = isCE ? (isBuy?'opt-ce-buy':'opt-ce-sell') : (isBuy?'opt-pe-buy':'opt-pe-sell');
+  const bCls = isBuy ? 'b-buy' : 'b-sell';
+  const otCls = isCE ? 'b-ce' : 'b-pe';
+  const moneyness = isCE ? (p.spot > p.strike ? 'ITM' : p.spot < p.strike ? 'OTM' : 'ATM')
+                         : (p.spot < p.strike ? 'ITM' : p.spot > p.strike ? 'OTM' : 'ATM');
+  const mColor = moneyness==='ITM'?'var(--profit)':moneyness==='ATM'?'var(--amber)':'var(--muted)';
+  return `<div class="tc ${cls}">
+    <div class="tc-hdr">
+      <div class="tc-left">
+        <span style="width:9px;height:9px;border-radius:50%;background:${color};display:inline-block;"></span>
+        <span class="tc-name">${inst.name} ${p.strike} ${p.optType}</span>
+        <span class="badge ${otCls}">${p.optType}</span>
+        <span class="badge ${bCls}">${isBuy?'BUY':'SELL'}</span>
+        <span class="tc-sub">${p.lots}L · ${r.qty}u · <span style="color:${mColor};font-weight:700;">${moneyness}</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div><div class="tc-pnl ${r.net>0?'profit':r.net<0?'loss':'neutral'}">${fmtS(r.net)}</div><div class="tc-roi">${fmtPct(r.roi)} ${isBuy?'on premium':'on margin'}</div></div>
+        <button class="btn br" onclick="removePos(${p.id})">✕</button>
+      </div>
+    </div>
+    <div class="tc-grid-4">
+      <div class="tf"><label>Lots</label><input type="number" min="1" max="200" value="${p.lots}" onchange="updatePos(${p.id},'lots',this.value)"></div>
+      <div class="tf"><label>Direction</label><select onchange="updatePos(${p.id},'dir',this.value)"><option value="buy" ${p.dir==='buy'?'selected':''}>Buy</option><option value="sell" ${p.dir==='sell'?'selected':''}>Sell</option></select></div>
+      <div class="tf"><label>Spot price ₹</label><input type="number" value="${p.spot}" onchange="updatePos(${p.id},'spot',this.value)" step="10"></div>
+      <div class="tf"><label>Strike ₹</label><input type="number" value="${p.strike}" onchange="updatePos(${p.id},'strike',this.value)" step="50"></div>
+      <div class="tf"><label>IV %</label><input type="number" min="1" max="200" value="${p.iv}" onchange="updatePos(${p.id},'iv',this.value)" step="0.5"></div>
+      <div class="tf"><label>Days to expiry</label><input type="number" min="0" max="365" value="${p.dte}" onchange="updatePos(${p.id},'dte',this.value)"></div>
+      <div class="tf"><label>Entry premium ₹</label><input type="number" value="${p.premium}" onchange="updatePos(${p.id},'premium',this.value)" step="0.5"></div>
+      <div class="tf"><label>Exit premium ₹</label><input type="number" value="${p.exitPremium}" onchange="updatePos(${p.id},'exitPremium',this.value)" step="0.5"></div>
+    </div>
+    <div class="greeks-box">
+      <div class="g-item"><div class="g-l">Delta</div><div class="g-v">${r.greeks.delta.toFixed(3)}</div></div>
+      <div class="g-item"><div class="g-l">Gamma</div><div class="g-v">${r.greeks.gamma.toFixed(4)}</div></div>
+      <div class="g-item"><div class="g-l">Theta/day</div><div class="g-v" style="color:var(--loss);">${fmtINR(r.theta)}</div></div>
+      <div class="g-item"><div class="g-l">Vega/1%IV</div><div class="g-v">${fmtINR(r.vega)}</div></div>
+      <div class="g-item"><div class="g-l">BS Price</div><div class="g-v" style="color:var(--teal);">${fmtINR(r.greeks.price)}</div></div>
+    </div>
+    <div class="tc-stats" style="margin-top:8px;">
+      <div class="tc-stat-item"><div class="st-l">Intrinsic</div><div class="st-v">${fmtINR(r.intrinsic)}</div></div>
+      <div class="tc-stat-item"><div class="st-l">Time value</div><div class="st-v amber">${fmtINR(r.tv)}</div></div>
+      <div class="tc-stat-item"><div class="st-l">Gross P&L</div><div class="st-v ${r.gross>0?'profit':r.gross<0?'loss':'neutral'}">${fmtS(r.gross)}</div></div>
+      <div class="tc-stat-item"><div class="st-l">Break-even</div><div class="st-v amber">${fmtINR(isCE ? p.strike + p.premium : p.strike - p.premium)}</div></div>
+    </div>
+  </div>`;
+}
+
+// ── Summary ───────────────────────────────────────────────────
+function renderSummary() {
+  let totNet=0, futNet=0, optNet=0, totMargin=0, totDelta=0, totTheta=0;
+  positions.forEach(p => {
+    const r = calcPos(p);
+    totNet += r.net; totMargin += r.margin; totDelta += r.delta; totTheta += r.theta||0;
+    if (p.kind==='FUT') futNet += r.net; else optNet += r.net;
+  });
+  const cc = n => n>0?'profit':n<0?'loss':'neutral';
+  const setV = (id, val, cls) => { $(id).textContent = val; $(id).className = 'sb-v ' + (cls||cc(parseFloat(val.replace(/[^0-9.-]/g,'')))); };
+  setV('sb-pnl', fmtS(totNet));
+  setV('sb-fut', fmtS(futNet));
+  setV('sb-opt', fmtS(optNet));
+  $('sb-delta').textContent = totDelta.toFixed(1);
+  $('sb-delta').className = 'sb-v ' + cc(totDelta);
+  $('sb-theta').textContent = fmtS(totTheta);
+  $('sb-theta').className = 'sb-v ' + (totTheta>0?'profit':'loss');
+  $('sb-margin').textContent = fmtINR(totMargin);
+  $('sb-count').textContent = positions.length;
+
+  $('port-breakdown').innerHTML = positions.length ? positions.map((p,i) => {
+    const r = calcPos(p), inst = INST[p.key]||INST.NIFTY;
+    const label = p.kind==='FUT' ? `${inst.name} FUT ${p.dir==='buy'?'L':'S'}` : `${inst.name} ${p.strike}${p.optType} ${p.dir==='buy'?'B':'S'}`;
+    return `<div class="pr"><span style="display:flex;align-items:center;gap:5px;color:var(--muted);"><span style="width:7px;height:7px;border-radius:50%;background:${COLORS[i%COLORS.length]};"></span>${label} ×${p.lots}</span><span class="${cc(r.net)}" style="font-weight:600;">${fmtS(r.net)}</span></div>`;
+  }).join('') + `<div class="pr" style="margin-top:4px;"><span style="font-weight:600;">Total</span><span class="${cc(totNet)}" style="font-weight:700;font-size:13px;">${fmtS(totNet)}</span></div>`
+  : `<div style="font-size:11px;color:var(--hint);padding:6px 0;">No positions yet.</div>`;
+
+  $('hero-pnl').textContent = fmtS(totNet);
+  $('hero-pnl').style.color = totNet>0?'var(--profit)':totNet<0?'var(--loss)':'var(--text)';
+  $('hero-sub').textContent = positions.length
+    ? `${positions.length} position${positions.length>1?'s':''} · Margin: ${fmtINR(totMargin)} · Δ ${totDelta.toFixed(1)} · θ ${fmtS(totTheta)}/day`
+    : 'Add positions to simulate';
+}
+
+// ── Payoff chart ──────────────────────────────────────────────
+function renderPayoff() {
+  if (!positions.length) { if(chartInst){chartInst.destroy();chartInst=null;} $('chart-legend').innerHTML=''; return; }
+  const refSpot = positions.find(p=>p.kind==='OPT')?.spot || positions[0]?.entry || 22500;
+  const lo = refSpot*0.92, hi = refSpot*1.09, steps = 50;
+  const labels = [];
+  for (let i=0;i<=steps;i++) labels.push((lo+(hi-lo)*i/steps).toFixed(0));
+
+  const datasets = positions.map((p,i) => {
+    const inst = INST[p.key]||INST.NIFTY;
+    const data = labels.map(lbl => {
+      const sp = parseFloat(lbl);
+      if (p.kind==='FUT') {
+        const sign = p.dir==='buy'?1:-1;
+        const qty = p.lots*inst.lot;
+        return parseFloat((sign*(sp-p.entry)*qty - p.brokerage*p.lots*2).toFixed(0));
+      } else {
+        const sign = p.dir==='buy'?1:-1;
+        const qty = p.lots*inst.lot;
+        const T = Math.max(0,p.dte/365);
+        const exitP = bs(sp, p.strike, T, p.r/100, p.iv/100, p.optType).price;
+        return parseFloat((sign*(exitP - p.premium)*qty - p.brokerage*p.lots*2).toFixed(0));
+      }
+    });
+    const name = p.kind==='FUT' ? `${inst.name} FUT` : `${inst.name} ${p.strike}${p.optType}`;
+    return { label:name, data, borderColor:COLORS[i%COLORS.length], borderWidth:1.5, pointRadius:0, tension:0.3, fill:false };
+  });
+
+  // combined
+  const combined = labels.map((_,i) => datasets.reduce((s,d)=>s+d.data[i],0));
+  datasets.push({ label:'Portfolio', data:combined, borderColor:'#ffffff', borderWidth:2.5, pointRadius:0, tension:0.2, fill:false, borderDash:[5,3] });
+
+  if (chartInst) chartInst.destroy();
+  chartInst = new Chart($('payoffChart'), {
+    type:'line', data:{labels, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{mode:'index',intersect:false, callbacks:{label:ctx=>ctx.dataset.label+': '+fmtS(ctx.raw)}} },
+      scales:{
+        x:{ticks:{maxTicksLimit:6,font:{size:9},color:'#3d4460',autoSkip:true},grid:{display:false}},
+        y:{ticks:{font:{size:9},color:'#3d4460',callback:v=>(v>=0?'+':'')+'₹'+Math.abs(v/1000).toFixed(0)+'K'},grid:{color:'rgba(61,68,96,0.2)'}}
+      }
+    }
+  });
+  $('chart-legend').innerHTML = [...positions.map((p,i)=>{
+    const inst=INST[p.key]||INST.NIFTY;
+    const nm = p.kind==='FUT'?`${inst.name} FUT`:`${inst.name} ${p.strike}${p.optType}`;
+    return `<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:2px;background:${COLORS[i%COLORS.length]};border-radius:2px;"></span>${nm}</span>`;
+  }),`<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:2px;background:#fff;border-radius:2px;"></span>Portfolio</span>`].join('');
+}
+
+// ── Greeks summary ────────────────────────────────────────────
+function renderGreeks() {
+  const opts = positions.filter(p=>p.kind==='OPT');
+  if (!opts.length) { $('greeks-summary').innerHTML=`<div style="font-size:11px;color:var(--hint);">No options positions.</div>`; return; }
+  let td=0, tg=0, tt=0, tv=0;
+  const rows = opts.map((p,i) => {
+    const r = calcOpt(p), inst=INST[p.key]||INST.NIFTY;
+    td+=r.delta; tg+=r.gamma; tt+=r.theta; tv+=r.vega;
+    return `<div class="pr">
+      <span style="color:var(--muted);font-size:11px;">${inst.name} ${p.strike}${p.optType} ${p.dir==='buy'?'B':'S'} ×${p.lots}</span>
+      <span style="display:flex;gap:10px;font-size:11px;">
+        <span>Δ <b class="${r.delta>0?'profit':'loss'}">${r.delta.toFixed(1)}</b></span>
+        <span>γ <b style="color:var(--teal)">${r.gamma.toFixed(3)}</b></span>
+        <span>θ <b class="loss">${fmtINR(r.theta)}</b></span>
+        <span>ν <b style="color:var(--purple)">${fmtINR(r.vega)}</b></span>
+      </span>
+    </div>`;
+  });
+  $('greeks-summary').innerHTML = rows.join('') + `
+    <div class="pr" style="margin-top:6px;border-top:0.5px solid var(--border2);padding-top:8px;">
+      <span style="font-weight:600;">Net Greeks</span>
+      <span style="display:flex;gap:10px;font-size:12px;">
+        <span>Δ <b class="${td>0?'profit':'loss'}">${td.toFixed(1)}</b></span>
+        <span>γ <b style="color:var(--teal)">${tg.toFixed(3)}</b></span>
+        <span>θ <b class="loss">${fmtINR(tt)}/day</b></span>
+        <span>ν <b style="color:var(--purple)">${fmtINR(tv)}</b></span>
+      </span>
+    </div>`;
+}
+
+// ── Scenarios ─────────────────────────────────────────────────
+function renderScenarios() {
+  if (!positions.length) { $('scenarios-content').innerHTML=`<div style="font-size:11px;color:var(--hint);">No positions.</div>`; return; }
+  const moves = [-0.04,-0.03,-0.02,-0.01,-0.005,0,0.005,0.01,0.02,0.03,0.04];
+  const refSpot = positions.find(p=>p.kind==='OPT')?.spot || positions[0]?.entry || 22500;
+  $('scenarios-content').innerHTML = `
+    <div style="font-size:10px;color:var(--hint);margin-bottom:6px;">Spot move from ₹${refSpot.toLocaleString('en-IN')}</div>
+    <div style="display:grid;grid-template-columns:55px 90px 1fr;gap:2px;font-size:10px;">
+      <div style="color:var(--hint);padding:3px 0;border-bottom:0.5px solid var(--border);">Move</div>
+      <div style="color:var(--hint);padding:3px 0;border-bottom:0.5px solid var(--border);">Spot</div>
+      <div style="color:var(--hint);padding:3px 0;border-bottom:0.5px solid var(--border);">Portfolio P&L</div>
+      ${moves.map(m => {
+        const newSpot = refSpot*(1+m);
+        let total = 0;
+        positions.forEach(p => {
+          const inst = INST[p.key]||INST.NIFTY;
+          const qty = p.lots*inst.lot;
+          if (p.kind==='FUT') {
+            const sign = p.dir==='buy'?1:-1;
+            total += sign*(newSpot-p.entry)*qty - p.brokerage*p.lots*2;
+          } else {
+            const sign = p.dir==='buy'?1:-1;
+            const T = Math.max(0,p.dte/365);
+            const ep = bs(newSpot, p.strike, T, p.r/100, p.iv/100, p.optType).price;
+            total += sign*(ep-p.premium)*qty - p.brokerage*p.lots*2;
+          }
+        });
+        const clr = total>0?'var(--profit)':total<0?'var(--loss)':'var(--muted)';
+        return `
+          <div style="color:var(--muted);padding:3px 0;border-bottom:0.5px solid var(--border);">${m>=0?'+':''}${(m*100).toFixed(1)}%</div>
+          <div style="padding:3px 0;border-bottom:0.5px solid var(--border);">${fmtINR(newSpot)}</div>
+          <div style="padding:3px 0;border-bottom:0.5px solid var(--border);font-weight:600;color:${clr};">${fmtS(total)}</div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ── Breakdown ─────────────────────────────────────────────────
+function renderBreakdown() {
+  if (!positions.length) { $('breakdown-content').innerHTML=`<div style="font-size:11px;color:var(--hint);">No positions.</div>`; return; }
+  $('breakdown-content').innerHTML = positions.map((p,i) => {
+    const r = calcPos(p), inst=INST[p.key]||INST.NIFTY;
+    const color = COLORS[i%COLORS.length];
+    const name = p.kind==='FUT' ? `${inst.name} FUT` : `${inst.name} ${p.strike}${p.optType}`;
+    return `<div style="background:var(--bg3);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-weight:700;font-size:12px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:${color};"></span>${name} · ${p.dir==='buy'||p.dir==='long'?'BUY':'SELL'} ${p.lots}L</span>
+        <span class="${r.net>0?'profit':r.net<0?'loss':'neutral'}" style="font-weight:700;">${fmtS(r.net)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:10px;">
+        <div><span style="color:var(--hint)">Gross P&L</span><br><b class="${r.gross>0?'profit':r.gross<0?'loss':'neutral'}">${fmtS(r.gross)}</b></div>
+        <div><span style="color:var(--hint)">Charges</span><br><b class="loss">−${fmtINR(r.charges)}</b></div>
+        <div><span style="color:var(--hint)">Margin used</span><br><b>${fmtINR(r.margin)}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Tab switch ────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  ['payoff','greeks','scenarios','breakdown'].forEach(t => $('rtab-'+t).style.display = t===tab?'block':'none');
+  document.querySelectorAll('.tabs .tab').forEach((b,i) => b.classList.toggle('active', ['payoff','greeks','scenarios','breakdown'][i]===tab));
+  if (tab==='payoff') renderPayoff();
+  if (tab==='greeks') renderGreeks();
+  if (tab==='scenarios') renderScenarios();
+  if (tab==='breakdown') renderBreakdown();
+}
+
+// ── Live prices ───────────────────────────────────────────────
+async function fetchPrice(sym) {
+  const proxy = $('proxy-url').value.trim().replace(/\/$/,'');
+  if (!proxy||!sym) return null;
+  try { const r=await fetch(`${proxy}/?symbol=${encodeURIComponent(sym)}`); const d=await r.json(); return d.price?parseFloat(d.price):null; } catch { return null; }
+}
+
+async function fetchAllPrices() {
+  const proxy = $('proxy-url').value.trim();
+  if (!proxy) { $('fetch-msg').textContent='Paste Worker URL first.'; $('fetch-msg').style.color='var(--amber)'; return; }
+  $('fetch-msg').textContent='Fetching…'; $('fetch-msg').style.color='var(--muted)';
+  let n=0;
+  for (const p of positions) {
+    const inst = INST[p.key]||INST.NIFTY;
+    if (!inst.sym) continue;
+    const price = await fetchPrice(inst.sym);
+    if (price) {
+      p.livePrice = price;
+      if (p.kind==='FUT') { p.market = price; }
+      else { p.spot = price; calcAndSetPremium(p); }
+      n++;
+    }
+  }
+  $('live-dot').classList.add('live');
+  $('live-label').textContent = n+' updated';
+  $('last-updated').textContent = new Date().toLocaleTimeString('en-IN');
+  $('fetch-msg').textContent = n+' instruments updated';
+  $('fetch-msg').style.color = 'var(--profit)';
+  renderAll();
+}
+
+async function fetchSingle(id) {
+  const p = positions.find(p=>p.id===id); if (!p) return;
+  const inst = INST[p.key]||INST.NIFTY;
+  const price = await fetchPrice(inst.sym);
+  if (price) {
+    p.livePrice = price;
+    if (p.kind==='FUT') p.market=price; else { p.spot=price; calcAndSetPremium(p); }
+    renderAll();
+  }
+}
+
+function autoRefresh() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer=null; $('auto-btn').textContent='Auto 30s'; $('auto-btn').className='btn bs'; return; }
+  fetchAllPrices();
+  autoTimer = setInterval(fetchAllPrices, 30000);
+  $('auto-btn').textContent='Stop auto'; $('auto-btn').className='btn br';
+}
+
+// ── Formatters ────────────────────────────────────────────────
+function fmtINR(n) { return '₹'+Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtS(n) { return (n>=0?'+':'−')+'₹'+Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtPct(n) { return (n>=0?'+':'')+n.toFixed(2)+'%'; }
+
+renderAll();
+</script>
+</body>
+</html>
