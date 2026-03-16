@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nifty Futures Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0d13; --bg2: #111520; --bg3: #181d2e;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+  --text: #dde2f0; --muted: #6b7490; --hint: #3d4460;
+  --profit: #00d68f; --loss: #ff4d6d; --amber: #ffb800; --blue: #4a9eff;
+  --orange: #ff7c3e; --purple: #9b6dff;
+  --radius: 10px; --radius-lg: 14px;
+}
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+header {
+  background: var(--bg2); border-bottom: 0.5px solid var(--border);
+  padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+}
+.logo { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.logo .nf { color: var(--amber); } .logo .fut { color: var(--blue); }
+.header-right { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hint); display: inline-block; margin-right: 5px; }
+.dot.live { background: var(--profit); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
+
+/* contract strip */
+.contract-strip {
+  background: var(--bg3); border-bottom: 0.5px solid var(--border);
+  padding: 8px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  font-size: 12px;
+}
+.cs-item { display: flex; flex-direction: column; gap: 1px; }
+.cs-label { font-size: 10px; color: var(--hint); text-transform: uppercase; letter-spacing: 0.06em; }
+.cs-val { font-weight: 600; color: var(--text); }
+.cs-val.up { color: var(--profit); } .cs-val.dn { color: var(--loss); }
+.cs-sep { width: 0.5px; height: 28px; background: var(--border2); }
+
+main { padding: 16px 24px; max-width: 1140px; margin: 0 auto; }
+
+/* live fetch bar */
+.fetch-bar {
+  background: var(--bg2); border: 0.5px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px;
+  display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap;
+}
+.fetch-bar label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fetch-bar input {
+  flex: 1; min-width: 220px; background: var(--bg3); border: 0.5px solid var(--border2);
+  border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px; outline: none;
+}
+.fetch-bar input:focus { border-color: var(--blue); }
+.btn { background: var(--blue); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity 0.15s; }
+.btn:hover { opacity: 0.82; }
+.btn.sec { background: var(--bg3); border: 0.5px solid var(--border2); color: var(--muted); }
+.btn.sec:hover { color: var(--text); }
+.btn.danger { background: rgba(255,77,109,0.15); border: 0.5px solid rgba(255,77,109,0.3); color: var(--loss); }
+.fetch-msg { font-size: 11px; color: var(--muted); }
+.tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+.tag-amber { background: rgba(255,184,0,0.15); color: var(--amber); }
+.tag-blue { background: rgba(74,158,255,0.15); color: var(--blue); }
+
+/* metrics row */
+.metrics { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; margin-bottom: 14px; }
+.metric { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.ml { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.mv { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.profit { color: var(--profit); } .loss { color: var(--loss); } .neutral { color: var(--text); } .amber { color: var(--amber); } .blue { color: var(--blue); }
+
+/* main grid */
+.grid-main { display: grid; grid-template-columns: 320px 1fr; gap: 12px; }
+.card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.sec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hint); font-weight: 600; margin-bottom: 12px; }
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+.row label { font-size: 11px; color: var(--muted); min-width: 110px; }
+input[type=range] { flex: 1; accent-color: var(--blue); cursor: pointer; }
+select { flex: 1; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 5px 8px; color: var(--text); font-size: 12px; outline: none; cursor: pointer; }
+.val { font-size: 12px; font-weight: 600; min-width: 90px; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.divider { border: none; border-top: 0.5px solid var(--border); margin: 12px 0; }
+
+/* contract info box */
+.contract-box {
+  background: var(--bg3); border: 0.5px solid var(--border2); border-radius: var(--radius);
+  padding: 10px 12px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
+}
+.ci { display: flex; justify-content: space-between; font-size: 11px; }
+.ci span:first-child { color: var(--muted); }
+.ci span:last-child { font-weight: 600; }
+
+/* price bar */
+.price-bar { position: relative; height: 48px; background: var(--bg3); border-radius: 6px; margin: 8px 0 4px; }
+.price-marker { position: absolute; top: -2px; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); z-index: 10; }
+.marker-line { width: 2px; height: 52px; border-radius: 1px; }
+.marker-label { font-size: 8px; font-weight: 700; white-space: nowrap; padding: 2px 4px; border-radius: 3px; margin-top: 2px; }
+.bar-minmax { display: flex; justify-content: space-between; font-size: 10px; color: var(--hint); margin-top: 2px; }
+
+/* right tabs */
+.tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+.tab { font-size: 11px; font-weight: 600; padding: 5px 11px; border-radius: 20px; cursor: pointer; border: 0.5px solid var(--border2); background: transparent; color: var(--muted); transition: all 0.15s; }
+.tab.active { background: var(--blue); color: #fff; border-color: transparent; }
+
+.log-row { display: flex; justify-content: space-between; align-items: flex-start; font-size: 11px; padding: 7px 0; border-bottom: 0.5px solid var(--border); }
+.log-row:last-child { border-bottom: none; }
+.lbl { color: var(--muted); }
+
+.pnl-hero { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 14px 16px; margin-top: 10px; }
+.pnl-num { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+.badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+.badge-p { background: rgba(0,214,143,0.15); color: var(--profit); }
+.badge-l { background: rgba(255,77,109,0.15); color: var(--loss); }
+.badge-n { background: var(--bg3); color: var(--muted); }
+
+/* margin meter */
+.margin-meter { margin-top: 10px; }
+.mm-bar-bg { height: 6px; background: var(--bg3); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
+.mm-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+.scenario-log-row { display: flex; justify-content: space-between; font-size: 11px; padding: 6px 0; border-bottom: 0.5px solid var(--border); }
+.scenario-log-row:last-child { border-bottom: none; }
+
+footer { text-align: center; padding: 18px; font-size: 11px; color: var(--hint); border-top: 0.5px solid var(--border); margin-top: 20px; }
+footer a { color: var(--blue); text-decoration: none; }
+
+@media (max-width: 780px) {
+  main { padding: 12px; }
+  .grid-main { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: repeat(2,1fr); }
+  header, .contract-strip { padding: 10px 14px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="nf">NIFTY</span> <span class="fut">FUTURES</span> <span style="color:var(--muted);font-weight:400;font-size:13px;">P&L Simulator</span></div>
+  <div class="header-right">
+    <div><span class="dot" id="live-dot"></span><span id="live-label">Spot not connected</span></div>
+    <span id="last-updated" style="color:var(--hint);font-size:11px;"></span>
+  </div>
+</header>
+
+<!-- contract strip -->
+<div class="contract-strip">
+  <div class="cs-item"><div class="cs-label">Contract</div><div class="cs-val" id="cs-contract">NIFTY FUT</div></div>
+  <div class="cs-sep"></div>
+  <div class="cs-item"><div class="cs-label">Expiry</div><div class="cs-val" id="cs-expiry">—</div></div>
+  <div class="cs-sep"></div>
+  <div class="cs-item"><div class="cs-label">Lot size</div><div class="cs-val">65</div></div>
+  <div class="cs-sep"></div>
+  <div class="cs-item"><div class="cs-label">Spot price</div><div class="cs-val" id="cs-spot">—</div></div>
+  <div class="cs-sep"></div>
+  <div class="cs-item"><div class="cs-label">Futures price</div><div class="cs-val" id="cs-fut">—</div></div>
+  <div class="cs-sep"></div>
+  <div class="cs-item"><div class="cs-label">Basis (fut−spot)</div><div class="cs-val" id="cs-basis">—</div></div>
+  <div class="cs-sep"></div>
+  <div class="cs-item"><div class="cs-label">Days to expiry</div><div class="cs-val" id="cs-dte">—</div></div>
+</div>
+
+<main>
+
+  <!-- fetch bar -->
+  <div class="fetch-bar">
+    <span class="tag tag-amber">LIVE DATA</span>
+    <label>Cloudflare Worker URL</label>
+    <input type="text" id="proxy-url" placeholder="https://lively-snowflake-05cc.priyadhasarathanm.workers.dev" autocomplete="off">
+    <button class="btn" onclick="fetchSpot()">Fetch Nifty spot</button>
+    <button class="btn sec" onclick="autoRefresh()">Auto 30s</button>
+    <span class="fetch-msg" id="fetch-msg"></span>
+  </div>
+
+  <!-- metrics -->
+  <div class="metrics">
+    <div class="metric"><div class="ml">Entry (futures)</div><div class="mv neutral" id="m-entry">—</div></div>
+    <div class="metric"><div class="ml">Current price</div><div class="mv amber" id="m-market">—</div></div>
+    <div class="metric"><div class="ml">Exit price</div><div class="mv neutral" id="m-exit">—</div></div>
+    <div class="metric"><div class="ml">Lots</div><div class="mv blue" id="m-lots">1</div></div>
+    <div class="metric"><div class="ml">Net P&L</div><div class="mv" id="m-pnl">—</div></div>
+  </div>
+
+  <div class="grid-main">
+
+    <!-- LEFT: setup -->
+    <div class="card">
+      <div class="sec-label">Contract setup</div>
+
+      <!-- contract info -->
+      <div class="contract-box">
+        <div class="ci"><span>Instrument</span><span style="color:var(--amber)">NIFTY50 FUT</span></div>
+        <div class="ci"><span>Lot size</span><span>65 units</span></div>
+        <div class="ci"><span>Tick size</span><span>0.05</span></div>
+        <div class="ci"><span>Margin ~</span><span id="ci-margin">—</span></div>
+        <div class="ci"><span>Contract value</span><span id="ci-cv">—</span></div>
+        <div class="ci"><span>Expiry</span><span id="ci-expiry">—</span></div>
+      </div>
+
+      <div class="row">
+        <label>Position</label>
+        <select id="dir">
+          <option value="long">Long (Buy)</option>
+          <option value="short">Short (Sell)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Lots</label>
+        <input type="range" id="lots" min="1" max="50" step="1" value="1">
+        <span class="val" id="lots-v">1 lot (75 units)</span>
+      </div>
+
+      <div class="row">
+        <label>Entry price</label>
+        <input type="range" id="entry" min="10000" max="30000" step="5" value="22000">
+        <span class="val" id="entry-v">₹22,000</span>
+      </div>
+
+      <div class="row">
+        <label>Current / mkt</label>
+        <input type="range" id="market" min="10000" max="30000" step="5" value="22300">
+        <span class="val" id="market-v">₹22,300</span>
+      </div>
+
+      <div class="row">
+        <label>Exit price</label>
+        <input type="range" id="exit" min="10000" max="30000" step="5" value="22600">
+        <span class="val" id="exit-v">₹22,600</span>
+      </div>
+
+      <div class="row">
+        <label>Basis (fut−spot)</label>
+        <input type="range" id="basis" min="-200" max="200" step="1" value="50">
+        <span class="val" id="basis-v">+50 pts</span>
+      </div>
+
+      <div class="row">
+        <label>Brokerage/lot</label>
+        <input type="range" id="brokerage" min="0" max="500" step="5" value="40">
+        <span class="val" id="brokerage-v">₹40</span>
+      </div>
+
+      <hr class="divider">
+      <div class="sec-label">Price map</div>
+      <div class="price-bar" id="price-bar"></div>
+      <div class="bar-minmax"><span id="bar-min"></span><span id="bar-max"></span></div>
+
+      <hr class="divider">
+      <!-- margin meter -->
+      <div class="sec-label">Margin utilisation</div>
+      <div class="margin-meter">
+        <div style="display:flex;justify-content:space-between;font-size:11px;">
+          <span style="color:var(--muted)">Used margin</span>
+          <span id="margin-used" style="font-weight:600;">—</span>
+        </div>
+        <div class="mm-bar-bg"><div class="mm-bar-fill" id="margin-bar" style="width:0%;background:var(--profit);"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--hint);">
+          <span>0%</span><span id="margin-pct">—</span><span>100%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: tabs -->
+    <div class="card" style="display:flex;flex-direction:column;">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('pnl')">P&L breakdown</button>
+        <button class="tab" onclick="switchTab('chart')">Payoff chart</button>
+        <button class="tab" onclick="switchTab('scenarios')">Scenarios</button>
+        <button class="tab" onclick="switchTab('log')">Trade log</button>
+      </div>
+
+      <!-- PNL tab -->
+      <div id="tab-pnl">
+        <div id="breakdown"></div>
+        <div class="pnl-hero" id="pnl-hero"></div>
+        <div style="margin-top:14px;">
+          <div class="sec-label">Point & rupee breakdown</div>
+          <div id="points-break"></div>
+        </div>
+      </div>
+
+      <!-- Chart tab -->
+      <div id="tab-chart" style="display:none;">
+        <div style="position:relative;height:320px;"><canvas id="pnlChart"></canvas></div>
+        <div id="chart-legend" style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- Scenarios tab -->
+      <div id="tab-scenarios" style="display:none;">
+        <div class="sec-label" style="margin-bottom:6px;">Target scenarios (from entry)</div>
+        <div id="scenarios-table"></div>
+      </div>
+
+      <!-- Log tab -->
+      <div id="tab-log" style="display:none;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="btn" onclick="addLog()">+ Save trade</button>
+          <button class="btn sec" onclick="clearLog()">Clear</button>
+        </div>
+        <div id="log-container"></div>
+        <div id="log-summary" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  Nifty 50 Futures · Lot size 75 · NSE · For educational use only · Not financial advice &nbsp;·&nbsp;
+  Live spot via <a href="https://finance.yahoo.com" target="_blank">Yahoo Finance</a> + <a href="https://workers.cloudflare.com" target="_blank">Cloudflare Workers</a>
+</footer>
+
+<script>
+// ── Constants ─────────────────────────────────────────────────
+const LOT = 65;
+const MARGIN_PER_LOT = 95000; // approx NIFTY futures SPAN margin ~₹95K per lot (65 units)
+let chartInstance = null, logEntries = [], activeTab = 'pnl', autoRefreshTimer = null;
+let spotPrice = null;
+
+const $ = id => document.getElementById(id);
+
+// ── Expiry calc (last Thursday of current month) ──────────────
+function getNiftyExpiry() {
+  const now = new Date();
+  // Near month expiry = last Thursday of current month
+  // If today is past last Thursday, show next month
+  function lastThursday(year, month) {
+    const d = new Date(year, month + 1, 0); // last day of month
+    while (d.getDay() !== 4) d.setDate(d.getDate() - 1);
+    return d;
+  }
+  let expiry = lastThursday(now.getFullYear(), now.getMonth());
+  if (now > expiry) expiry = lastThursday(now.getFullYear(), now.getMonth() + 1);
+  return expiry;
+}
+
+function daysToExpiry() {
+  const now = new Date();
+  const expiry = getNiftyExpiry();
+  const diff = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+  return diff;
+}
+
+function formatExpiry(d) {
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// ── Formatting ────────────────────────────────────────────────
+function fmtINR(n) { return '₹' + Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtSigned(n) { return (n >= 0 ? '+' : '−') + '₹' + Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtPts(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + ' pts'; }
+function fmtPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
+function colorClass(n) { return n > 0 ? 'profit' : n < 0 ? 'loss' : 'neutral'; }
+function badgeClass(n) { return n > 0 ? 'badge-p' : n < 0 ? 'badge-l' : 'badge-n'; }
+
+// ── Live spot fetch ───────────────────────────────────────────
+async function fetchSpot() {
+  const proxy = $('proxy-url').value.trim().replace(/\/$/,'');
+  const msg = $('fetch-msg');
+  if (!proxy) { msg.textContent = 'Paste Worker URL first.'; msg.style.color = 'var(--amber)'; return; }
+  msg.textContent = 'Fetching Nifty spot…'; msg.style.color = 'var(--muted)';
+  try {
+    const res = await fetch(`${proxy}/?symbol=%5ENSEI`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.price) {
+      spotPrice = parseFloat(data.price);
+      const futPrice = spotPrice + parseFloat($('basis').value);
+      const maxP = Math.ceil(spotPrice * 1.15 / 100) * 100;
+      const minP = Math.floor(spotPrice * 0.87 / 100) * 100;
+      ['entry','market','exit'].forEach(id => { $(id).min = minP; $(id).max = maxP; $(id).step = 5; });
+      $('market').value = futPrice;
+      if (parseFloat($('entry').value) >= futPrice) $('entry').value = (futPrice - 100).toFixed(0);
+      if (parseFloat($('exit').value) <= futPrice) $('exit').value = (futPrice + 200).toFixed(0);
+      $('cs-spot').textContent = fmtINR(spotPrice);
+      $('cs-fut').textContent = fmtINR(futPrice);
+      $('cs-basis').textContent = fmtPts(parseFloat($('basis').value));
+      $('live-dot').classList.add('live');
+      $('live-label').textContent = 'Nifty ' + fmtINR(spotPrice);
+      $('last-updated').textContent = new Date().toLocaleTimeString('en-IN');
+      msg.textContent = `Spot: ${fmtINR(spotPrice)} · Fut: ${fmtINR(futPrice)}`;
+      msg.style.color = 'var(--profit)';
+      update();
+    } else {
+      msg.textContent = data.error || 'Failed.';
+      msg.style.color = 'var(--loss)';
+    }
+  } catch(e) {
+    msg.textContent = 'Worker unreachable — check URL.';
+    msg.style.color = 'var(--loss)';
+  }
+}
+
+function autoRefresh() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; return; }
+  fetchSpot();
+  autoRefreshTimer = setInterval(fetchSpot, 30000);
+}
+
+// ── Calc ──────────────────────────────────────────────────────
+function getVals() {
+  return {
+    dir: $('dir').value,
+    lots: parseInt($('lots').value),
+    entry: parseFloat($('entry').value),
+    market: parseFloat($('market').value),
+    exit: parseFloat($('exit').value),
+    basis: parseFloat($('basis').value),
+    brokerage: parseFloat($('brokerage').value),
+  };
+}
+
+function calcPnl(v) {
+  const sign = v.dir === 'long' ? 1 : -1;
+  const qty = v.lots * LOT;
+  const totalBrokerage = v.brokerage * v.lots * 2; // entry + exit
+  // STT on sell side for futures ~0.0125% of sell value (approx)
+  const sttSell = 0.000125 * v.exit * qty;
+  const totalCharges = totalBrokerage + sttSell;
+
+  const pointsGain = sign * (v.exit - v.entry);
+  const grossPnl = pointsGain * qty;
+  const netPnl = grossPnl - totalCharges;
+
+  const unrealizedPts = sign * (v.market - v.entry);
+  const unrealizedPnl = unrealizedPts * qty;
+
+  const entryValue = v.entry * qty;
+  const exitValue = v.exit * qty;
+  const pnlPct = entryValue ? (netPnl / entryValue) * 100 : 0;
+  const marginUsed = MARGIN_PER_LOT * v.lots;
+  const roiOnMargin = (netPnl / marginUsed) * 100;
+  const contractVal = v.entry * LOT; // per lot
+
+  return { sign, qty, pointsGain, grossPnl, totalBrokerage, sttSell, totalCharges, netPnl, unrealizedPts, unrealizedPnl, entryValue, exitValue, pnlPct, marginUsed, roiOnMargin, contractVal };
+}
+
+// ── Main update ───────────────────────────────────────────────
+function update() {
+  const v = getVals();
+  const p = calcPnl(v);
+  const expiry = getNiftyExpiry();
+  const dte = daysToExpiry();
+
+  // header strip
+  $('cs-expiry').textContent = formatExpiry(expiry);
+  $('cs-dte').textContent = dte + ' days';
+  if (spotPrice) {
+    $('cs-spot').textContent = fmtINR(spotPrice);
+    $('cs-fut').textContent = fmtINR(spotPrice + v.basis);
+    $('cs-basis').textContent = fmtPts(v.basis);
+    $('cs-basis').className = 'cs-val ' + (v.basis >= 0 ? 'up' : 'dn');
+  }
+
+  // contract box
+  $('ci-margin').textContent = fmtINR(MARGIN_PER_LOT * v.lots);
+  $('ci-cv').textContent = fmtINR(p.contractVal * v.lots);
+  $('ci-expiry').textContent = formatExpiry(expiry);
+
+  // sliders
+  $('lots-v').textContent = v.lots + ' lot' + (v.lots > 1 ? 's' : '') + ' (' + (v.lots * LOT) + ' units)';
+  $('entry-v').textContent = fmtINR(v.entry);
+  $('market-v').textContent = fmtINR(v.market);
+  $('exit-v').textContent = fmtINR(v.exit);
+  $('basis-v').textContent = (v.basis >= 0 ? '+' : '') + v.basis + ' pts';
+  $('brokerage-v').textContent = fmtINR(v.brokerage) + '/lot';
+
+  // metric cards
+  $('m-entry').textContent = fmtINR(v.entry);
+  $('m-market').textContent = fmtINR(v.market);
+  $('m-exit').textContent = fmtINR(v.exit);
+  $('m-lots').textContent = v.lots + (v.lots > 1 ? ' lots' : ' lot');
+  const pnlEl = $('m-pnl');
+  pnlEl.textContent = fmtSigned(p.netPnl);
+  pnlEl.className = 'mv ' + colorClass(p.netPnl);
+
+  renderBreakdown(v, p);
+  renderPriceBar(v, p);
+  renderMarginMeter(p, v);
+  if (activeTab === 'chart') renderChart(v, p);
+  if (activeTab === 'scenarios') renderScenarios(v, p);
+}
+
+function renderBreakdown(v, p) {
+  const rows = [
+    ['Entry value', fmtINR(p.entryValue), 'neutral'],
+    ['Exit value', fmtINR(p.exitValue), 'neutral'],
+    ['Points gain/loss', fmtPts(p.pointsGain) + ' × ' + p.qty + ' units', colorClass(p.pointsGain)],
+    ['Gross P&L', fmtSigned(p.grossPnl), colorClass(p.grossPnl)],
+    ['Brokerage (×2 sides)', '−' + fmtINR(p.totalBrokerage), 'loss'],
+    ['STT (approx)', '−' + fmtINR(p.sttSell), 'loss'],
+    ['Net P&L', fmtSigned(p.netPnl), colorClass(p.netPnl)],
+    ['ROI on margin', fmtPct(p.roiOnMargin), colorClass(p.roiOnMargin)],
+  ];
+  $('breakdown').innerHTML = rows.map(([l, v2, c]) =>
+    `<div class="log-row"><span class="lbl">${l}</span><span class="${c}" style="font-weight:600">${v2}</span></div>`
+  ).join('');
+
+  $('pnl-hero').innerHTML = `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Net P&L · ${v.lots} lot${v.lots>1?'s':''} · ${v.dir==='long'?'Long':'Short'}</div>
+    <div class="pnl-num ${colorClass(p.netPnl)}">${fmtSigned(p.netPnl)}<span class="badge ${badgeClass(p.netPnl)}">${fmtPct(p.pnlPct)}</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">ROI on margin: <span class="${colorClass(p.roiOnMargin)}" style="font-weight:600">${fmtPct(p.roiOnMargin)}</span></div>
+  `;
+
+  $('points-break').innerHTML = `
+    <div class="log-row"><span class="lbl">Entry → Exit points</span><span class="${colorClass(p.pointsGain)}" style="font-weight:600">${fmtPts(p.pointsGain)}</span></div>
+    <div class="log-row"><span class="lbl">Per lot value</span><span style="font-weight:600">${fmtSigned(p.pointsGain * LOT)}</span></div>
+    <div class="log-row"><span class="lbl">Unrealized (vs market)</span><span class="${colorClass(p.unrealizedPnl)}" style="font-weight:600">${fmtSigned(p.unrealizedPnl)} (${fmtPts(p.unrealizedPts)})</span></div>
+    <div class="log-row"><span class="lbl">Break-even (after charges)</span><span class="amber" style="font-weight:600">${fmtINR(v.entry + (v.dir==='long'?1:-1) * p.totalCharges / p.qty)}</span></div>
+  `;
+}
+
+function renderPriceBar(v, p) {
+  const be = v.entry + (v.dir === 'long' ? 1 : -1) * p.totalCharges / p.qty;
+  const prices = [v.entry, v.market, v.exit, be];
+  const lo = Math.min(...prices) * 0.995, hi = Math.max(...prices) * 1.005;
+  const range = hi - lo;
+  const pct = x => ((x - lo) / range * 100).toFixed(1);
+  const markers = [
+    { price: v.entry, label: 'Entry', color: '#4a9eff', bg: 'rgba(74,158,255,0.2)', tc: '#4a9eff' },
+    { price: v.market, label: 'Mkt', color: '#ffb800', bg: 'rgba(255,184,0,0.2)', tc: '#ffb800' },
+    { price: v.exit, label: 'Exit', color: '#00d68f', bg: 'rgba(0,214,143,0.2)', tc: '#00d68f' },
+    { price: be, label: 'B/E', color: '#6b7490', bg: 'rgba(107,116,144,0.15)', tc: '#6b7490' },
+  ];
+  $('bar-min').textContent = fmtINR(lo);
+  $('bar-max').textContent = fmtINR(hi);
+  $('price-bar').innerHTML = markers.map(m =>
+    `<div class="price-marker" style="left:${pct(m.price)}%"><div class="marker-line" style="background:${m.color};opacity:0.75"></div><div class="marker-label" style="background:${m.bg};color:${m.tc};">${m.label}<br>${fmtINR(m.price)}</div></div>`
+  ).join('');
+}
+
+function renderMarginMeter(p, v) {
+  const used = p.marginUsed;
+  const totalCapital = used * 3; // assume 3x available capital for display
+  const pct = Math.min(100, (used / totalCapital) * 100);
+  const color = pct < 40 ? 'var(--profit)' : pct < 70 ? 'var(--amber)' : 'var(--loss)';
+  $('margin-used').textContent = fmtINR(used);
+  $('margin-bar').style.width = pct + '%';
+  $('margin-bar').style.background = color;
+  $('margin-pct').textContent = pct.toFixed(0) + '% of est. capital';
+}
+
+function renderChart(v, p) {
+  const lo = v.entry * 0.92, hi = v.entry * 1.1, steps = 40;
+  const labels = [], profits = [];
+  for (let i = 0; i <= steps; i++) {
+    const ep = lo + (hi - lo) * i / steps;
+    labels.push(fmtINR(ep));
+    const sign = v.dir === 'long' ? 1 : -1;
+    const pnl = sign * (ep - v.entry) * v.lots * LOT - p.totalCharges;
+    profits.push(parseFloat(pnl.toFixed(0)));
+  }
+  const colors = profits.map(x => x >= 0 ? 'rgba(0,214,143,0.75)' : 'rgba(255,77,109,0.75)');
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart($('pnlChart'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: 'P&L', data: profits, backgroundColor: colors, borderRadius: 2 },
+      { type: 'line', label: 'Zero', data: labels.map(() => 0), borderColor: '#3d4460', borderWidth: 1, borderDash: [4,3], pointRadius: 0, tension: 0 }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.datasetIndex === 0 ? fmtSigned(ctx.raw) : null } } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 7, font: { size: 9 }, color: '#3d4460', autoSkip: true }, grid: { display: false } },
+        y: { ticks: { font: { size: 9 }, color: '#3d4460', callback: v2 => (v2 >= 0 ? '+₹' : '−₹') + Math.abs(v2 / 1000).toFixed(0) + 'K' }, grid: { color: 'rgba(61,68,96,0.2)' } }
+      }
+    }
+  });
+  $('chart-legend').innerHTML = `
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#00d68f;opacity:.75;"></span>Profit zone</span>
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#ff4d6d;opacity:.75;"></span>Loss zone</span>
+    <span style="color:var(--hint);font-size:10px;">Exit: ${fmtINR(v.exit)} · ${v.lots} lot${v.lots>1?'s':''}</span>
+  `;
+}
+
+function renderScenarios(v, p) {
+  const targets = [
+    { label: '−3%', pts: -v.entry * 0.03 },
+    { label: '−2%', pts: -v.entry * 0.02 },
+    { label: '−1%', pts: -v.entry * 0.01 },
+    { label: '−0.5%', pts: -v.entry * 0.005 },
+    { label: 'B/E', pts: p.totalCharges / p.qty },
+    { label: '+0.5%', pts: v.entry * 0.005 },
+    { label: '+1%', pts: v.entry * 0.01 },
+    { label: '+2%', pts: v.entry * 0.02 },
+    { label: '+3%', pts: v.entry * 0.03 },
+  ];
+  const sign = v.dir === 'long' ? 1 : -1;
+  $('scenarios-table').innerHTML = `
+    <div style="display:grid;grid-template-columns:60px 80px 90px 100px 100px;gap:0;font-size:11px;">
+      <div style="color:var(--hint);padding:5px 0;border-bottom:0.5px solid var(--border);">Move</div>
+      <div style="color:var(--hint);padding:5px 0;border-bottom:0.5px solid var(--border);">Price</div>
+      <div style="color:var(--hint);padding:5px 0;border-bottom:0.5px solid var(--border);">Points</div>
+      <div style="color:var(--hint);padding:5px 0;border-bottom:0.5px solid var(--border);">Gross P&L</div>
+      <div style="color:var(--hint);padding:5px 0;border-bottom:0.5px solid var(--border);">Net P&L</div>
+      ${targets.map(t => {
+        const exitP = v.entry + t.pts;
+        const gross = sign * t.pts * p.qty;
+        const net = gross - p.totalCharges;
+        const cls = colorClass(net);
+        return `
+          <div style="padding:5px 0;border-bottom:0.5px solid var(--border);color:var(--muted);">${t.label}</div>
+          <div style="padding:5px 0;border-bottom:0.5px solid var(--border);">${fmtINR(exitP)}</div>
+          <div style="padding:5px 0;border-bottom:0.5px solid var(--border);color:${net>=0?'var(--profit)':'var(--loss)'};">${fmtPts(t.pts)}</div>
+          <div style="padding:5px 0;border-bottom:0.5px solid var(--border);color:${net>=0?'var(--profit)':'var(--loss)'};">${fmtSigned(gross)}</div>
+          <div style="padding:5px 0;border-bottom:0.5px solid var(--border);font-weight:600;color:${net>=0?'var(--profit)':'var(--loss)'};">${fmtSigned(net)}</div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ── Tabs ──────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  ['pnl','chart','scenarios','log'].forEach(t => $('tab-' + t).style.display = t === tab ? 'block' : 'none');
+  document.querySelectorAll('.tabs .tab').forEach((btn, i) => btn.classList.toggle('active', ['pnl','chart','scenarios','log'][i] === tab));
+  if (tab === 'chart') renderChart(getVals(), calcPnl(getVals()));
+  if (tab === 'scenarios') renderScenarios(getVals(), calcPnl(getVals()));
+}
+
+// ── Trade log ─────────────────────────────────────────────────
+function addLog() {
+  const v = getVals(), p = calcPnl(v);
+  logEntries.unshift({
+    desc: `${v.dir==='long'?'LONG':'SHORT'} ${v.lots}L @ ${fmtINR(v.entry)} → ${fmtINR(v.exit)}`,
+    pnl: p.netPnl, roi: p.roiOnMargin, time: new Date().toLocaleTimeString('en-IN')
+  });
+  renderLog();
+}
+function clearLog() { logEntries = []; renderLog(); }
+function renderLog() {
+  const c = $('log-container');
+  if (!logEntries.length) { c.innerHTML = `<div style="font-size:11px;color:var(--hint);padding:10px 0;">No trades saved. Set up a trade and click + Save trade.</div>`; return; }
+  c.innerHTML = logEntries.map(e =>
+    `<div class="scenario-log-row">
+      <div><div style="color:var(--muted)">${e.desc}</div><div style="color:var(--hint);font-size:10px;">${e.time}</div></div>
+      <div style="text-align:right"><div class="${colorClass(e.pnl)}" style="font-weight:700">${fmtSigned(e.pnl)}</div><div style="font-size:10px;color:var(--hint);">ROI ${fmtPct(e.roi)}</div></div>
+    </div>`
+  ).join('');
+  // summary
+  const total = logEntries.reduce((s,e) => s + e.pnl, 0);
+  const wins = logEntries.filter(e => e.pnl > 0).length;
+  $('log-summary').innerHTML = `
+    <div style="background:var(--bg3);border-radius:var(--radius);padding:10px 12px;display:flex;gap:20px;font-size:11px;">
+      <div><div style="color:var(--hint)">Total P&L</div><div class="${colorClass(total)}" style="font-weight:700">${fmtSigned(total)}</div></div>
+      <div><div style="color:var(--hint)">Trades</div><div style="font-weight:600">${logEntries.length}</div></div>
+      <div><div style="color:var(--hint)">Win rate</div><div style="font-weight:600;color:var(--profit)">${logEntries.length ? Math.round(wins/logEntries.length*100) : 0}%</div></div>
+    </div>
+  `;
+}
+
+// ── Listeners ─────────────────────────────────────────────────
+['dir','lots','entry','market','exit','basis','brokerage'].forEach(id => $(id).addEventListener('input', update));
+$('proxy-url').addEventListener('keydown', e => { if (e.key === 'Enter') fetchSpot(); });
+
+update();
+</script>
+</body>
+</html>
