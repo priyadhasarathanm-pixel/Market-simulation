@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Futures Portfolio Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0d13; --bg2: #111520; --bg3: #181d2e; --bg4: #1e2440;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+  --text: #dde2f0; --muted: #6b7490; --hint: #3d4460;
+  --profit: #00d68f; --loss: #ff4d6d; --amber: #ffb800; --blue: #4a9eff;
+  --purple: #9b6dff; --orange: #ff7c3e; --teal: #00c9b1;
+  --radius: 10px; --radius-lg: 14px;
+}
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+header { background: var(--bg2); border-bottom: 0.5px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.logo { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.logo .hi { color: var(--amber); } .logo .lo { color: var(--blue); }
+.hdr-right { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.live-chip { display: flex; align-items: center; gap: 5px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 20px; padding: 3px 10px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--hint); }
+.dot.live { background: var(--profit); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.35} }
+
+/* top summary bar */
+.summary-bar { background: var(--bg2); border-bottom: 0.5px solid var(--border); padding: 10px 24px; display: flex; gap: 0; overflow-x: auto; }
+.sb-item { padding: 4px 20px; border-right: 0.5px solid var(--border2); min-width: 110px; }
+.sb-item:first-child { padding-left: 0; }
+.sb-item:last-child { border-right: none; }
+.sb-label { font-size: 10px; color: var(--hint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+.sb-val { font-size: 16px; font-weight: 700; }
+.profit { color: var(--profit); } .loss { color: var(--loss); } .neutral { color: var(--text); } .amber { color: var(--amber); } .blue { color: var(--blue); }
+
+main { padding: 16px 24px; max-width: 1200px; margin: 0 auto; }
+
+/* fetch bar */
+.fetch-bar { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.fetch-bar label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fetch-bar input { flex: 1; min-width: 200px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px; outline: none; }
+.fetch-bar input:focus { border-color: var(--blue); }
+.tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; white-space: nowrap; background: rgba(255,184,0,0.15); color: var(--amber); }
+.fetch-msg { font-size: 11px; color: var(--muted); }
+
+.btn { border: none; border-radius: 6px; padding: 6px 13px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
+.btn:hover { opacity: 0.82; }
+.btn-blue { background: var(--blue); color: #fff; }
+.btn-sec { background: var(--bg3); border: 0.5px solid var(--border2); color: var(--muted); }
+.btn-sec:hover { color: var(--text); }
+.btn-green { background: rgba(0,214,143,0.15); border: 0.5px solid rgba(0,214,143,0.3); color: var(--profit); }
+.btn-red { background: rgba(255,77,109,0.12); border: 0.5px solid rgba(255,77,109,0.25); color: var(--loss); font-size: 11px; padding: 4px 8px; }
+
+/* two col layout */
+.layout { display: grid; grid-template-columns: 1fr 380px; gap: 14px; align-items: start; }
+
+/* trades panel */
+.trades-panel { display: flex; flex-direction: column; gap: 10px; }
+.add-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.instrument-select { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px; font-weight: 600; outline: none; cursor: pointer; }
+
+/* trade card */
+.trade-card {
+  background: var(--bg2); border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+  position: relative; transition: border-color 0.2s;
+}
+.trade-card:hover { border-color: var(--border2); }
+.trade-card.long-card { border-left: 3px solid var(--profit); }
+.trade-card.short-card { border-left: 3px solid var(--loss); }
+
+.tc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
+.tc-name { display: flex; align-items: center; gap: 8px; }
+.tc-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+.tc-badge.long { background: rgba(0,214,143,0.15); color: var(--profit); }
+.tc-badge.short { background: rgba(255,77,109,0.15); color: var(--loss); }
+.tc-instrument { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.tc-lot-info { font-size: 11px; color: var(--muted); }
+.tc-pnl { font-size: 18px; font-weight: 700; text-align: right; }
+.tc-pnl-sub { font-size: 10px; color: var(--muted); text-align: right; }
+
+.tc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.tc-field { display: flex; flex-direction: column; gap: 3px; }
+.tc-field label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.tc-field input[type=number] {
+  background: var(--bg3); border: 0.5px solid var(--border2);
+  border-radius: 6px; padding: 6px 8px; color: var(--text);
+  font-size: 13px; font-weight: 600; outline: none; width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.tc-field input[type=number]:focus { border-color: var(--blue); }
+.tc-field select { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 12px; font-weight: 600; outline: none; width: 100%; }
+
+.tc-row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.tc-mini { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; border-bottom: 0.5px solid var(--border); }
+.tc-mini:last-child { border-bottom: none; }
+.tc-mini span:first-child { color: var(--muted); }
+.tc-mini span:last-child { font-weight: 600; }
+
+.fetch-price-btn { font-size: 10px; padding: 3px 8px; border-radius: 4px; background: rgba(74,158,255,0.12); border: 0.5px solid rgba(74,158,255,0.25); color: var(--blue); cursor: pointer; font-weight: 600; transition: opacity 0.15s; }
+.fetch-price-btn:hover { opacity: 0.8; }
+
+.tc-actions { display: flex; gap: 6px; align-items: center; }
+
+/* right panel */
+.right-panel { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.sec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hint); font-weight: 600; margin-bottom: 12px; }
+
+/* chart */
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; cursor: pointer; border: 0.5px solid var(--border2); background: transparent; color: var(--muted); transition: all 0.15s; }
+.tab.active { background: var(--blue); color: #fff; border-color: transparent; }
+
+.pnl-row { display: flex; justify-content: space-between; font-size: 11px; padding: 6px 0; border-bottom: 0.5px solid var(--border); }
+.pnl-row:last-child { border-bottom: none; }
+
+/* scenario targets */
+.sc-row { display: grid; grid-template-columns: 50px 1fr 1fr; gap: 4px; font-size: 11px; padding: 5px 0; border-bottom: 0.5px solid var(--border); }
+.sc-row:last-child { border-bottom: none; }
+.sc-row span:first-child { color: var(--muted); }
+
+/* empty state */
+.empty-state { background: var(--bg2); border: 0.5px dashed var(--border2); border-radius: var(--radius-lg); padding: 40px; text-align: center; color: var(--hint); }
+.empty-state div:first-child { font-size: 28px; margin-bottom: 8px; }
+
+footer { text-align: center; padding: 16px; font-size: 11px; color: var(--hint); border-top: 0.5px solid var(--border); margin-top: 20px; }
+footer a { color: var(--blue); text-decoration: none; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  main { padding: 12px; }
+  .tc-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="hi">FUTURES</span> <span class="lo">PORTFOLIO</span> <span style="color:var(--muted);font-weight:400;font-size:12px;">Multi-trade Simulator</span></div>
+  <div class="hdr-right">
+    <div class="live-chip"><span class="dot" id="live-dot"></span><span id="live-label">Not connected</span></div>
+    <span id="last-updated" style="color:var(--hint);font-size:11px;"></span>
+  </div>
+</header>
+
+<!-- summary bar -->
+<div class="summary-bar">
+  <div class="sb-item"><div class="sb-label">Total P&L</div><div class="sb-val" id="sb-pnl">₹0</div></div>
+  <div class="sb-item"><div class="sb-label">Unrealized</div><div class="sb-val" id="sb-unreal">₹0</div></div>
+  <div class="sb-item"><div class="sb-label">Total margin</div><div class="sb-val neutral" id="sb-margin">₹0</div></div>
+  <div class="sb-item"><div class="sb-label">Portfolio ROI</div><div class="sb-val" id="sb-roi">0%</div></div>
+  <div class="sb-item"><div class="sb-label">Positions</div><div class="sb-val neutral" id="sb-count">0</div></div>
+  <div class="sb-item"><div class="sb-label">Long / Short</div><div class="sb-val neutral" id="sb-ls">0 / 0</div></div>
+</div>
+
+<main>
+
+  <!-- fetch bar -->
+  <div class="fetch-bar">
+    <span class="tag">LIVE</span>
+    <label>Worker URL</label>
+    <input type="text" id="proxy-url" placeholder="https://lively-snowflake-05cc.priyadhasarathanm.workers.dev" autocomplete="off">
+    <button class="btn btn-blue" onclick="fetchAllPrices()">Refresh all prices</button>
+    <button class="btn btn-sec" onclick="autoRefresh()" id="auto-btn">Auto 30s</button>
+    <span class="fetch-msg" id="fetch-msg"></span>
+  </div>
+
+  <div class="layout">
+
+    <!-- LEFT: trades -->
+    <div class="trades-panel">
+      <div class="add-bar">
+        <select class="instrument-select" id="new-instrument">
+          <optgroup label="── Index Futures ──">
+            <option value="NIFTY">NIFTY 50 (lot 65)</option>
+            <option value="BANKNIFTY">BANK NIFTY (lot 30)</option>
+            <option value="FINNIFTY">FIN NIFTY (lot 65)</option>
+            <option value="MIDCPNIFTY">MIDCAP NIFTY (lot 75)</option>
+            <option value="SENSEX">SENSEX (lot 10)</option>
+          </optgroup>
+          <optgroup label="── Stock Futures ──">
+            <option value="RELIANCE">RELIANCE (lot 250)</option>
+            <option value="TCS">TCS (lot 150)</option>
+            <option value="INFY">INFY (lot 300)</option>
+            <option value="HDFCBANK">HDFC BANK (lot 550)</option>
+            <option value="ICICIBANK">ICICI BANK (lot 700)</option>
+            <option value="WIPRO">WIPRO (lot 1500)</option>
+            <option value="TATAMOTORS">TATA MOTORS (lot 2800)</option>
+            <option value="BAJFINANCE">BAJAJ FINANCE (lot 125)</option>
+            <option value="SBIN">SBI (lot 3000)</option>
+            <option value="ADANIENT">ADANI ENT (lot 250)</option>
+          </optgroup>
+          <optgroup label="── Custom ──">
+            <option value="CUSTOM">Custom instrument</option>
+          </optgroup>
+        </select>
+        <select class="instrument-select" id="new-dir" style="width:110px;">
+          <option value="long">Long (Buy)</option>
+          <option value="short">Short (Sell)</option>
+        </select>
+        <button class="btn btn-green" onclick="addTrade()">+ Add position</button>
+        <button class="btn btn-sec" onclick="clearAll()">Clear all</button>
+      </div>
+
+      <div id="trades-container">
+        <div class="empty-state" id="empty-state">
+          <div>📊</div>
+          <div style="font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px;">No positions yet</div>
+          <div style="font-size:12px;">Select an instrument above and click + Add position</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: summary panel -->
+    <div class="right-panel">
+
+      <!-- portfolio P&L card -->
+      <div class="card">
+        <div class="sec-label">Portfolio summary</div>
+        <div id="portfolio-breakdown"></div>
+        <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;margin-top:10px;">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Net realized P&L</div>
+          <div style="font-size:28px;font-weight:700;" id="hero-pnl">₹0.00</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="hero-sub">Add positions to simulate</div>
+        </div>
+      </div>
+
+      <!-- chart -->
+      <div class="card">
+        <div class="tabs">
+          <button class="tab active" onclick="switchRTab('chart')">Payoff</button>
+          <button class="tab" onclick="switchRTab('scenario')">Scenarios</button>
+          <button class="tab" onclick="switchRTab('positions')">Positions</button>
+        </div>
+        <div id="rtab-chart">
+          <div style="position:relative;height:220px;"><canvas id="portfolioChart"></canvas></div>
+          <div id="chart-legend" style="display:flex;gap:10px;margin-top:8px;font-size:10px;color:var(--muted);flex-wrap:wrap;"></div>
+        </div>
+        <div id="rtab-scenario" style="display:none;">
+          <div id="scenario-content"></div>
+        </div>
+        <div id="rtab-positions" style="display:none;">
+          <div id="positions-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer>
+  NSE Futures Portfolio Simulator · For educational use only · Not financial advice &nbsp;·&nbsp;
+  Live data via <a href="https://finance.yahoo.com" target="_blank">Yahoo Finance</a> + <a href="https://workers.cloudflare.com" target="_blank">Cloudflare Workers</a>
+</footer>
+
+<script>
+// ── Instrument definitions ────────────────────────────────────
+const INSTRUMENTS = {
+  NIFTY:       { name: 'NIFTY 50',      lot: 65,   symbol: '^NSEI',       margin: 95000,  defaultPrice: 22500 },
+  BANKNIFTY:   { name: 'BANK NIFTY',    lot: 30,   symbol: '^NSEBANK',    margin: 55000,  defaultPrice: 48000 },
+  FINNIFTY:    { name: 'FIN NIFTY',     lot: 65,   symbol: 'NIFTY_FIN_SERVICE.NS', margin: 45000, defaultPrice: 21000 },
+  MIDCPNIFTY:  { name: 'MIDCAP NIFTY',  lot: 75,   symbol: 'NIFTY_MIDCAP_SELECT.NS', margin: 70000, defaultPrice: 12000 },
+  SENSEX:      { name: 'SENSEX',        lot: 10,   symbol: '^BSESN',      margin: 120000, defaultPrice: 74000 },
+  RELIANCE:    { name: 'RELIANCE',      lot: 250,  symbol: 'RELIANCE.NS', margin: 85000,  defaultPrice: 1380 },
+  TCS:         { name: 'TCS',           lot: 150,  symbol: 'TCS.NS',      margin: 60000,  defaultPrice: 3900 },
+  INFY:        { name: 'INFY',          lot: 300,  symbol: 'INFY.NS',     margin: 45000,  defaultPrice: 1750 },
+  HDFCBANK:    { name: 'HDFC BANK',     lot: 550,  symbol: 'HDFCBANK.NS', margin: 90000,  defaultPrice: 1680 },
+  ICICIBANK:   { name: 'ICICI BANK',    lot: 700,  symbol: 'ICICIBANK.NS',margin: 75000,  defaultPrice: 1250 },
+  WIPRO:       { name: 'WIPRO',         lot: 1500, symbol: 'WIPRO.NS',    margin: 65000,  defaultPrice: 460 },
+  TATAMOTORS:  { name: 'TATA MOTORS',   lot: 2800, symbol: 'TATAMOTORS.NS',margin:70000,  defaultPrice: 775 },
+  BAJFINANCE:  { name: 'BAJAJ FINANCE', lot: 125,  symbol: 'BAJFINANCE.NS',margin: 85000, defaultPrice: 6800 },
+  SBIN:        { name: 'SBI',           lot: 3000, symbol: 'SBIN.NS',     margin: 70000,  defaultPrice: 780 },
+  ADANIENT:    { name: 'ADANI ENT',     lot: 250,  symbol: 'ADANIENT.NS', margin: 90000,  defaultPrice: 2400 },
+  CUSTOM:      { name: 'Custom',        lot: 100,  symbol: null,          margin: 50000,  defaultPrice: 1000 },
+};
+
+// ── State ─────────────────────────────────────────────────────
+let trades = [];
+let tradeIdCounter = 0;
+let chartInstance = null;
+let autoTimer = null;
+let activeRTab = 'chart';
+const COLORS = ['#4a9eff','#00d68f','#ffb800','#ff7c3e','#9b6dff','#00c9b1','#ff4d6d','#e8c96a'];
+
+const $ = id => document.getElementById(id);
+
+// ── Formatting ────────────────────────────────────────────────
+function fmtINR(n) { return '₹' + Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtS(n) { return (n >= 0 ? '+' : '−') + '₹' + Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
+function fmtPts(n) { return (n >= 0 ? '+' : '') + n.toFixed(1); }
+function cc(n) { return n > 0 ? 'profit' : n < 0 ? 'loss' : 'neutral'; }
+
+// ── Add / remove trades ───────────────────────────────────────
+function addTrade() {
+  const key = $('new-instrument').value;
+  const dir = $('new-dir').value;
+  const inst = INSTRUMENTS[key];
+  const id = ++tradeIdCounter;
+  const price = inst.defaultPrice;
+  trades.push({
+    id, key, dir,
+    lots: 1,
+    entry: price,
+    market: price,
+    exit: dir === 'long' ? price * 1.02 : price * 0.98,
+    brokerage: 40,
+    livePrice: null,
+  });
+  renderAll();
+}
+
+function removeTrade(id) {
+  trades = trades.filter(t => t.id !== id);
+  renderAll();
+}
+
+function clearAll() {
+  trades = [];
+  renderAll();
+}
+
+function updateField(id, field, val) {
+  const t = trades.find(t => t.id === id);
+  if (!t) return;
+  t[field] = parseFloat(val) || val;
+  renderAll();
+}
+
+// ── Live price fetch ──────────────────────────────────────────
+async function fetchPrice(symbol) {
+  const proxy = $('proxy-url').value.trim().replace(/\/$/,'');
+  if (!proxy || !symbol) return null;
+  try {
+    const res = await fetch(`${proxy}/?symbol=${encodeURIComponent(symbol)}`);
+    const data = await res.json();
+    return data.price ? parseFloat(data.price) : null;
+  } catch { return null; }
+}
+
+async function fetchAllPrices() {
+  const proxy = $('proxy-url').value.trim();
+  if (!proxy) { $('fetch-msg').textContent = 'Paste Worker URL first.'; $('fetch-msg').style.color = 'var(--amber)'; return; }
+  $('fetch-msg').textContent = 'Fetching…'; $('fetch-msg').style.color = 'var(--muted)';
+  let fetched = 0;
+  for (const t of trades) {
+    const inst = INSTRUMENTS[t.key];
+    if (!inst.symbol) continue;
+    const price = await fetchPrice(inst.symbol);
+    if (price) {
+      t.livePrice = price;
+      t.market = price;
+      fetched++;
+    }
+  }
+  $('live-dot').classList.add('live');
+  $('live-label').textContent = fetched + ' price' + (fetched !== 1 ? 's' : '') + ' updated';
+  $('last-updated').textContent = new Date().toLocaleTimeString('en-IN');
+  $('fetch-msg').textContent = fetched + ' instruments updated';
+  $('fetch-msg').style.color = 'var(--profit)';
+  renderAll();
+}
+
+function autoRefresh() {
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+    $('auto-btn').textContent = 'Auto 30s';
+    $('auto-btn').className = 'btn btn-sec';
+    return;
+  }
+  fetchAllPrices();
+  autoTimer = setInterval(fetchAllPrices, 30000);
+  $('auto-btn').textContent = 'Stop auto';
+  $('auto-btn').className = 'btn btn-red';
+}
+
+// ── Calc per trade ────────────────────────────────────────────
+function calcTrade(t) {
+  const inst = INSTRUMENTS[t.key];
+  const sign = t.dir === 'long' ? 1 : -1;
+  const qty = t.lots * inst.lot;
+  const totalBrok = t.brokerage * t.lots * 2;
+  const stt = 0.000125 * t.exit * qty;
+  const charges = totalBrok + stt;
+  const ptGain = sign * (t.exit - t.entry);
+  const gross = ptGain * qty;
+  const net = gross - charges;
+  const unreal = sign * (t.market - t.entry) * qty;
+  const margin = inst.margin * t.lots;
+  const roi = margin ? (net / margin) * 100 : 0;
+  const be = t.entry + sign * charges / qty;
+  return { qty, ptGain, gross, charges, net, unreal, margin, roi, be };
+}
+
+// ── Render all ────────────────────────────────────────────────
+function renderAll() {
+  renderTrades();
+  renderSummary();
+  if (activeRTab === 'chart') renderChart();
+  if (activeRTab === 'scenario') renderScenarios();
+  if (activeRTab === 'positions') renderPositionsList();
+}
+
+function renderTrades() {
+  const c = $('trades-container');
+  $('empty-state') && $('empty-state').remove();
+
+  if (!trades.length) {
+    c.innerHTML = `<div class="empty-state" id="empty-state"><div>📊</div><div style="font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px;">No positions yet</div><div style="font-size:12px;">Select an instrument above and click + Add position</div></div>`;
+    return;
+  }
+
+  c.innerHTML = trades.map((t, idx) => {
+    const inst = INSTRUMENTS[t.key];
+    const p = calcTrade(t);
+    const color = COLORS[idx % COLORS.length];
+    const netCls = cc(p.net);
+    const isLong = t.dir === 'long';
+
+    return `
+    <div class="trade-card ${isLong ? 'long-card' : 'short-card'}" id="tc-${t.id}">
+      <div class="tc-header">
+        <div class="tc-name">
+          <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;"></span>
+          <span class="tc-instrument">${inst.name}</span>
+          <span class="tc-badge ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span>
+          <span class="tc-lot-info">Lot ${inst.lot} · ${t.lots} lot${t.lots>1?'s':''} · ${p.qty} units</span>
+          ${inst.symbol ? `<button class="fetch-price-btn" onclick="fetchSingle(${t.id})">↻ Live</button>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div>
+            <div class="tc-pnl ${netCls}">${fmtS(p.net)}</div>
+            <div class="tc-pnl-sub">${fmtPct(p.roi)} on margin</div>
+          </div>
+          <button class="btn btn-red" onclick="removeTrade(${t.id})">✕</button>
+        </div>
+      </div>
+
+      <div class="tc-grid">
+        <div class="tc-field">
+          <label>Lots</label>
+          <input type="number" min="1" max="100" value="${t.lots}" onchange="updateField(${t.id},'lots',this.value)" step="1">
+        </div>
+        <div class="tc-field">
+          <label>Direction</label>
+          <select onchange="updateField(${t.id},'dir',this.value)">
+            <option value="long" ${t.dir==='long'?'selected':''}>Long (Buy)</option>
+            <option value="short" ${t.dir==='short'?'selected':''}>Short (Sell)</option>
+          </select>
+        </div>
+        <div class="tc-field">
+          <label>Brokerage/lot</label>
+          <input type="number" min="0" max="500" value="${t.brokerage}" onchange="updateField(${t.id},'brokerage',this.value)" step="5">
+        </div>
+        <div class="tc-field">
+          <label>Entry price ₹</label>
+          <input type="number" value="${t.entry}" onchange="updateField(${t.id},'entry',this.value)" step="0.5">
+        </div>
+        <div class="tc-field">
+          <label>Market price ₹ ${t.livePrice ? '🟢' : ''}</label>
+          <input type="number" value="${t.market}" onchange="updateField(${t.id},'market',this.value)" step="0.5">
+        </div>
+        <div class="tc-field">
+          <label>Exit / target ₹</label>
+          <input type="number" value="${t.exit}" onchange="updateField(${t.id},'exit',this.value)" step="0.5">
+        </div>
+      </div>
+
+      <div class="tc-row2" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:11px;background:var(--bg3);border-radius:6px;padding:8px;">
+        <div><div style="color:var(--hint)">Points</div><div class="${cc(p.ptGain)}" style="font-weight:600">${fmtPts(p.ptGain)}</div></div>
+        <div><div style="color:var(--hint)">Gross P&L</div><div class="${cc(p.gross)}" style="font-weight:600">${fmtS(p.gross)}</div></div>
+        <div><div style="color:var(--hint)">Charges</div><div class="loss" style="font-weight:600">−${fmtINR(p.charges)}</div></div>
+        <div><div style="color:var(--hint)">Break-even</div><div class="amber" style="font-weight:600">${fmtINR(p.be)}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function fetchSingle(id) {
+  const t = trades.find(t => t.id === id);
+  if (!t) return;
+  const inst = INSTRUMENTS[t.key];
+  const price = await fetchPrice(inst.symbol);
+  if (price) {
+    t.livePrice = price;
+    t.market = price;
+    renderAll();
+  }
+}
+
+function renderSummary() {
+  const totalNet = trades.reduce((s, t) => s + calcTrade(t).net, 0);
+  const totalUnreal = trades.reduce((s, t) => s + calcTrade(t).unreal, 0);
+  const totalMargin = trades.reduce((s, t) => s + calcTrade(t).margin, 0);
+  const roi = totalMargin ? (totalNet / totalMargin) * 100 : 0;
+  const longs = trades.filter(t => t.dir === 'long').length;
+  const shorts = trades.filter(t => t.dir === 'short').length;
+
+  $('sb-pnl').textContent = fmtS(totalNet);
+  $('sb-pnl').className = 'sb-val ' + cc(totalNet);
+  $('sb-unreal').textContent = fmtS(totalUnreal);
+  $('sb-unreal').className = 'sb-val ' + cc(totalUnreal);
+  $('sb-margin').textContent = fmtINR(totalMargin);
+  $('sb-roi').textContent = fmtPct(roi);
+  $('sb-roi').className = 'sb-val ' + cc(roi);
+  $('sb-count').textContent = trades.length;
+  $('sb-ls').textContent = longs + ' / ' + shorts;
+
+  // breakdown
+  $('portfolio-breakdown').innerHTML = trades.length ? trades.map((t, i) => {
+    const p = calcTrade(t), inst = INSTRUMENTS[t.key];
+    const color = COLORS[i % COLORS.length];
+    return `<div class="pnl-row">
+      <span style="display:flex;align-items:center;gap:6px;color:var(--muted);"><span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>${inst.name} ${t.dir==='long'?'L':'S'} ×${t.lots}</span>
+      <span class="${cc(p.net)}" style="font-weight:600">${fmtS(p.net)}</span>
+    </div>`;
+  }).join('') + `<div class="pnl-row" style="margin-top:4px;"><span style="font-weight:600;">Total</span><span class="${cc(totalNet)}" style="font-weight:700;font-size:13px;">${fmtS(totalNet)}</span></div>`
+  : `<div style="font-size:11px;color:var(--hint);padding:8px 0;">No positions added yet.</div>`;
+
+  $('hero-pnl').textContent = fmtS(totalNet);
+  $('hero-pnl').className = 'profit' in {} ? '' : '';
+  $('hero-pnl').style.color = totalNet > 0 ? 'var(--profit)' : totalNet < 0 ? 'var(--loss)' : 'var(--text)';
+  $('hero-sub').textContent = trades.length
+    ? `${trades.length} position${trades.length>1?'s':''} · Margin: ${fmtINR(totalMargin)} · ROI: ${fmtPct(roi)}`
+    : 'Add positions to simulate';
+}
+
+function renderChart() {
+  if (!trades.length) { if (chartInstance) { chartInstance.destroy(); chartInstance = null; } $('chart-legend').innerHTML = ''; return; }
+  const refPrice = trades[0].entry;
+  const lo = refPrice * 0.93, hi = refPrice * 1.08, steps = 40;
+  const labels = [];
+  for (let i = 0; i <= steps; i++) labels.push((lo + (hi - lo) * i / steps).toFixed(0));
+
+  const datasets = trades.map((t, idx) => {
+    const inst = INSTRUMENTS[t.key];
+    const sign = t.dir === 'long' ? 1 : -1;
+    const qty = t.lots * inst.lot;
+    const brok = t.brokerage * t.lots * 2;
+    const data = labels.map(lbl => {
+      const ep = parseFloat(lbl);
+      const stt = 0.000125 * ep * qty;
+      return parseFloat((sign * (ep - t.entry) * qty - brok - stt).toFixed(0));
+    });
+    return { label: inst.name, data, borderColor: COLORS[idx % COLORS.length], borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false };
+  });
+
+  // combined
+  const combined = labels.map((_, i) => datasets.reduce((s, d) => s + d.data[i], 0));
+  datasets.push({ label: 'Portfolio', data: combined, borderColor: '#fff', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false, borderDash: [5,3] });
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart($('portfolioChart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: ctx => ctx.dataset.label + ': ' + fmtS(ctx.raw) } } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6, font: { size: 9 }, color: '#3d4460', autoSkip: true }, grid: { display: false } },
+        y: { ticks: { font: { size: 9 }, color: '#3d4460', callback: v => (v>=0?'+':'')+'₹'+Math.abs(v/1000).toFixed(0)+'K' }, grid: { color: 'rgba(61,68,96,0.2)' } }
+      }
+    }
+  });
+  $('chart-legend').innerHTML = [...trades.map((t,i) => {
+    const inst = INSTRUMENTS[t.key];
+    return `<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:3px;background:${COLORS[i%COLORS.length]};border-radius:2px;"></span>${inst.name}</span>`;
+  }), `<span style="display:flex;align-items:center;gap:3px;"><span style="width:10px;height:3px;background:#fff;border-radius:2px;"></span>Portfolio</span>`].join('');
+}
+
+function renderScenarios() {
+  if (!trades.length) { $('scenario-content').innerHTML = `<div style="font-size:11px;color:var(--hint);padding:8px 0;">No positions added.</div>`; return; }
+  const moves = [-0.03,-0.02,-0.01,-0.005,0,0.005,0.01,0.02,0.03];
+  const refEntry = trades[0].entry;
+  $('scenario-content').innerHTML = `
+    <div style="font-size:10px;color:var(--hint);margin-bottom:8px;">Based on first position's entry as reference price</div>
+    <div style="display:grid;grid-template-columns:50px 1fr 1fr;gap:2px;font-size:10px;">
+      <div style="color:var(--hint);padding:4px 0;border-bottom:0.5px solid var(--border);">Move</div>
+      <div style="color:var(--hint);padding:4px 0;border-bottom:0.5px solid var(--border);">Ref price</div>
+      <div style="color:var(--hint);padding:4px 0;border-bottom:0.5px solid var(--border);">Portfolio P&L</div>
+      ${moves.map(m => {
+        const factor = 1 + m;
+        let total = 0;
+        trades.forEach(t => {
+          const inst = INSTRUMENTS[t.key];
+          const sign = t.dir === 'long' ? 1 : -1;
+          const qty = t.lots * inst.lot;
+          // scale exit proportionally
+          const scaledExit = t.entry * factor;
+          const brok = t.brokerage * t.lots * 2;
+          const stt = 0.000125 * scaledExit * qty;
+          total += sign * (scaledExit - t.entry) * qty - brok - stt;
+        });
+        const refPrice = refEntry * factor;
+        const cls = total > 0 ? 'var(--profit)' : total < 0 ? 'var(--loss)' : 'var(--muted)';
+        return `
+          <div style="color:var(--muted);padding:4px 0;border-bottom:0.5px solid var(--border);">${m>=0?'+':''}${(m*100).toFixed(1)}%</div>
+          <div style="padding:4px 0;border-bottom:0.5px solid var(--border);">${fmtINR(refPrice)}</div>
+          <div style="padding:4px 0;border-bottom:0.5px solid var(--border);font-weight:600;color:${cls};">${fmtS(total)}</div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderPositionsList() {
+  if (!trades.length) { $('positions-list').innerHTML = `<div style="font-size:11px;color:var(--hint);padding:8px 0;">No positions.</div>`; return; }
+  $('positions-list').innerHTML = trades.map((t, i) => {
+    const inst = INSTRUMENTS[t.key], p = calcTrade(t);
+    const color = COLORS[i % COLORS.length];
+    return `
+    <div style="background:var(--bg3);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-weight:700;font-size:12px;display:flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
+          ${inst.name} · ${t.dir==='long'?'LONG':'SHORT'} ${t.lots}L
+        </span>
+        <span class="${cc(p.net)}" style="font-weight:700;font-size:13px;">${fmtS(p.net)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:10px;">
+        <div><span style="color:var(--hint)">Entry</span><br><b>${fmtINR(t.entry)}</b></div>
+        <div><span style="color:var(--hint)">Market</span><br><b>${fmtINR(t.market)}</b></div>
+        <div><span style="color:var(--hint)">Exit</span><br><b>${fmtINR(t.exit)}</b></div>
+        <div><span style="color:var(--hint)">Unrealized</span><br><b class="${cc(p.unreal)}">${fmtS(p.unreal)}</b></div>
+        <div><span style="color:var(--hint)">Margin</span><br><b>${fmtINR(p.margin)}</b></div>
+        <div><span style="color:var(--hint)">ROI</span><br><b class="${cc(p.roi)}">${fmtPct(p.roi)}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function switchRTab(tab) {
+  activeRTab = tab;
+  ['chart','scenario','positions'].forEach(t => $('rtab-' + t).style.display = t === tab ? 'block' : 'none');
+  document.querySelectorAll('.tabs .tab').forEach((btn, i) => btn.classList.toggle('active', ['chart','scenario','positions'][i] === tab));
+  if (tab === 'chart') renderChart();
+  if (tab === 'scenario') renderScenarios();
+  if (tab === 'positions') renderPositionsList();
+}
+
+renderAll();
+</script>
+</body>
+</html>
